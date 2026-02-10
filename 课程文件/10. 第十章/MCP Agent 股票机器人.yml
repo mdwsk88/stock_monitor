@@ -1,0 +1,168 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: agent-chat
+  name: MCP Agent 股票机器人
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.5@fd6efd37c2a931911de8ab9ca3ba2da303bef146d45ee87ad896b04b36d09403
+    version: null
+kind: app
+model_config:
+  agent_mode:
+    enabled: true
+    max_iteration: 10
+    prompt: null
+    strategy: function_call
+    tools:
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: queryStockByTitleKeywords
+      tool_name: queryStockByTitleKeywords
+      tool_parameters:
+        titleKeywords: null
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: queryStockCountsBetweenDate
+      tool_name: queryStockCountsBetweenDate
+      tool_parameters:
+        endDate: null
+        startDate: null
+        targetCounts: null
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: getMyEmail
+      tool_name: getMyEmail
+      tool_parameters: {}
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: sendMail
+      tool_name: sendMail
+      tool_parameters:
+        emailInfo: null
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: getCurrentTimeByZoneId
+      tool_name: getCurrentTimeByZoneId
+      tool_parameters:
+        cityName: null
+        zoneId: null
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: queryStockInfoByCodeBetweenDate
+      tool_name: queryStockInfoByCodeBetweenDate
+      tool_parameters:
+        endDate: null
+        startDate: null
+        stockCode: null
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: getCurrentTime
+      tool_name: getCurrentTime
+      tool_parameters: {}
+    - enabled: true
+      notAuthor: false
+      provider_id: my-stock-mcp-server
+      provider_name: 美股异动MCP服务
+      provider_type: mcp
+      tool_label: queryStockInfoByCode
+      tool_name: queryStockInfoByCode
+      tool_parameters:
+        stockCode: null
+  annotation_reply:
+    enabled: false
+  chat_prompt_config:
+    prompt:
+    - role: system
+      text: ''
+  completion_prompt_config:
+    conversation_histories_role:
+      assistant_prefix: ''
+      user_prefix: ''
+    prompt:
+      text: ''
+  dataset_configs:
+    datasets:
+      datasets: []
+    retrieval_model: multiple
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      stop: []
+    mode: chat
+    name: deepseek-chat
+    provider: langgenius/deepseek/deepseek
+  more_like_this:
+    enabled: false
+  opening_statement: ''
+  pre_prompt: 你是一个非常智能的AI助手，根据提供的MCP工具来进行合理的调用。
+  prompt_type: simple
+  retriever_resource:
+    enabled: true
+  sensitive_word_avoidance:
+    configs: []
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions: []
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form: []
+version: 0.5.0
