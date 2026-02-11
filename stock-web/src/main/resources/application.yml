@@ -15,3 +15,15 @@ mybatis-plus:
       id-type:
       update-strategy: not_empty
   mapper-locations: classpath*:/mappers/*.xml
+
+
+baidu:
+  translate:
+    host: ${BAIDU_TRANSLATE_HOST}
+    appid: ${BAIDU_TRANSLATE_APPID}
+    securityKey: ${BAIDU_TRANSLATE_SECURITYKEY}
+
+dingding:
+  token: ${DINGDING_TOKEN}
+  secret: ${DINGDING_SECRET}
+  userid: ${DINGDING_USERID}

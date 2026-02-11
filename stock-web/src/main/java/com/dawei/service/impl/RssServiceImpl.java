@@ -1,20 +1,27 @@
-package com.dawei.service.Impl;
+package com.dawei.service.impl;
 
+import cn.hutool.json.JSONUtil;
+import com.dawei.entity.BaiduTransEntity;
+import com.dawei.entity.USStockMsg;
 import com.dawei.entity.USStockRss;
 import com.dawei.enums.StockTag;
 import com.dawei.service.RssService;
 import com.dawei.service.StockService;
+import com.dawei.utils.DingTalkApi;
 import com.dawei.utils.GMTDateConverter;
 import com.dawei.utils.StockTitanCrawler;
+import com.dawei.utils.TransApi;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 import jakarta.annotation.Resource;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.net.URL;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 @Service
@@ -24,6 +31,12 @@ public class RssServiceImpl implements RssService {
 
 
 
+    @Resource
+    private TransApi transApi;
+
+    @Resource
+    private DingTalkApi dingTalkApi;
+
 
     public static final String RSS_URL = "https://www.stocktitan.net/rss";
 
@@ -31,7 +44,11 @@ public class RssServiceImpl implements RssService {
 
     @Override
     public void displayRss() throws Exception {
+
+
         List<SyndEntry> syndEntryList = this.fetchRssReed(RSS_URL);
+
+        List<USStockMsg> stockMsgList = new ArrayList<>();
 
         //        System.out.println(syndEntryList);
 
@@ -62,12 +79,31 @@ public class RssServiceImpl implements RssService {
             stockNews.setStockCode(stockCode);
 
 //            transApi.testEnv();
-//
-//            // 判断股票异动信息是否已存在，如果存在则不进行保存的操作
-//            if (stockService.isStockNewsExist(stockCode, stockNews.getLink())) {
-////                System.out.println("股票代码为【" + stockCode + "】的已存在，跳过。。。");
-//                continue;
-//            }
+
+            // 判断股票异动信息是否已存在，如果存在则不进行保存的操作
+            if (stockService.isStockNewsExist(stockCode, stockNews.getLink())) {
+                System.out.println("股票代码为【" + stockCode + "】的已存在，跳过。。。");
+                continue;
+            }
+
+
+            // 使用百度翻译SDK调用其API对英文标题进行翻译（翻译为中文）
+            String finalTitleZh = "";
+
+            String result = transApi.getTransResult(titleEn, "en", "zh");
+//            System.out.println("百度翻译调用的结果 result为： " +  result);
+            BaiduTransEntity transEntity = JSONUtil.toBean(result, BaiduTransEntity.class);
+            if (transEntity != null) {
+                List<BaiduTransEntity.TransResult> transResultList = transEntity.getTrans_result();
+                if (transResultList == null || transResultList.isEmpty() || transResultList.size() <= 0) {
+                    continue;
+                }
+                finalTitleZh = transResultList.get(0).getDst();
+            }
+
+            // 处理股票标题，翻译为中文
+            stockNews.setTitleZh(finalTitleZh);
+
             // 获得股票异动信息的标签
             try {
                 List<String> tagsList = StockTitanCrawler.getTags(titleEn);
@@ -81,7 +117,33 @@ public class RssServiceImpl implements RssService {
             System.out.println(stockNews.toString());
             stockService.saveStockNews(stockNews);
 
+
+            USStockMsg stockMsg = new USStockMsg();
+            BeanUtils.copyProperties(stockNews, stockMsg);
+
+            stockMsg.setPubDateBj(GMTDateConverter.getBeijingTime(gmtDateTemp));
+
+            Long counts24Hour = stockService.getStockUnusualCounts(stockNews,
+                    GMTDateConverter.minus24Hour(gmtDate),
+                    GMTDateConverter.plus1Minute(gmtDate));
+            Long counts3Day = stockService.getStockUnusualCounts(stockNews,
+                    GMTDateConverter.minus3Day(gmtDate),
+                    GMTDateConverter.plus1Minute(gmtDate));
+            Long counts1Week = stockService.getStockUnusualCounts(stockNews,
+                    GMTDateConverter.minus1Week(gmtDate),
+                    GMTDateConverter.plus1Minute(gmtDate));
+            stockMsg.setCounts24Hour(counts24Hour.intValue());
+            stockMsg.setCounts3Day(counts3Day.intValue());
+            stockMsg.setCounts1Week(counts1Week.intValue());
+
+            System.out.println(stockMsg.toString());
+            stockMsgList.add(stockMsg);
         }
+
+        if (!stockMsgList.isEmpty()) {
+            dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
+        }
+
     }
 
     @Override
