@@ -1,4 +1,4 @@
-package com.dawei.service.Impl;
+package com.dawei.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.dawei.entity.USStockRss;
