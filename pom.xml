@@ -11,6 +11,7 @@
     <packaging>pom</packaging>
     <modules>
         <module>stock-web</module>
+        <module>stock-mcp</module>
     </modules>
 
     <properties>
