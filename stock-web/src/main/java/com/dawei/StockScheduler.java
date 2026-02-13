@@ -34,11 +34,12 @@ public class StockScheduler {
 //    0 0 10,14,16 * * ? 每天上午10点，下午2点，4点
 
     // 定时任务，定时抓取股票数据信息
-    @Scheduled(cron = "*/30 * * * * ?")
+    //@Scheduled(cron = "0 */30 * * * ?")
+    @Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000)
     public void getStockInfo() throws Exception {
         System.out.println("每隔一段时间运行..." + LocalDateTime.now());
         rssService.displayRss();
-        System.out.println("=======================");
+        System.out.println("定时任务执行结束=======================");
     }
 
 }
