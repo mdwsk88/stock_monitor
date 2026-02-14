@@ -7,10 +7,7 @@ import com.dawei.entity.USStockRss;
 import com.dawei.enums.StockTag;
 import com.dawei.service.RssService;
 import com.dawei.service.StockService;
-import com.dawei.utils.DingTalkApi;
-import com.dawei.utils.GMTDateConverter;
-import com.dawei.utils.StockTitanCrawler;
-import com.dawei.utils.TransApi;
+import com.dawei.utils.*;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
@@ -36,6 +33,9 @@ public class RssServiceImpl implements RssService {
 
     @Resource
     private DingTalkApi dingTalkApi;
+
+    @Resource
+    private WeComApi weComApi;
 
 
     public static final String RSS_URL = "https://www.stocktitan.net/rss";
@@ -141,7 +141,9 @@ public class RssServiceImpl implements RssService {
         }
 
         if (!stockMsgList.isEmpty()) {
-            dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
+            //dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
+            weComApi.sendMarkdownMessage(weComApi.formatStockInfoFromList(stockMsgList));
+            //weComApi.sendTextMessage(weComApi.formatStockInfoTextFromList(stockMsgList));
         }
 
     }
