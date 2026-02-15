@@ -90,16 +90,16 @@ public class RssServiceImpl implements RssService {
             // 使用百度翻译SDK调用其API对英文标题进行翻译（翻译为中文）
             String finalTitleZh = "";
 
-//            String result = transApi.getTransResult(titleEn, "en", "zh");
-////            System.out.println("百度翻译调用的结果 result为： " +  result);
-//            BaiduTransEntity transEntity = JSONUtil.toBean(result, BaiduTransEntity.class);
-//            if (transEntity != null) {
-//                List<BaiduTransEntity.TransResult> transResultList = transEntity.getTrans_result();
-//                if (transResultList == null || transResultList.isEmpty() || transResultList.size() <= 0) {
-//                    continue;
-//                }
-//                finalTitleZh = transResultList.get(0).getDst();
-//            }
+            String result = transApi.getTransResult(titleEn, "en", "zh");
+//            System.out.println("百度翻译调用的结果 result为： " +  result);
+            BaiduTransEntity transEntity = JSONUtil.toBean(result, BaiduTransEntity.class);
+            if (transEntity != null) {
+                List<BaiduTransEntity.TransResult> transResultList = transEntity.getTrans_result();
+                if (transResultList == null || transResultList.isEmpty() || transResultList.size() <= 0) {
+                    continue;
+                }
+                finalTitleZh = transResultList.get(0).getDst();
+            }
 
             // 处理股票标题，翻译为中文
             stockNews.setTitleZh(finalTitleZh);
