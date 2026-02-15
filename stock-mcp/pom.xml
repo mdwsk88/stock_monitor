@@ -78,6 +78,20 @@
             <version>0.64.8</version>
         </dependency>
 
+        <!-- HTML 转 Markdown 工具 -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-html2md-converter</artifactId>
+            <version>0.64.8</version>
+        </dependency>
+
+        <!-- HTML解析工具 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
 
 
         <dependency>
