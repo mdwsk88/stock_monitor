@@ -4,6 +4,7 @@ package com.dawei;
 import com.dawei.mcp.tool.DateTool;
 import com.dawei.mcp.tool.EmailTool;
 import com.dawei.mcp.tool.StockTool;
+import com.dawei.mcp.tool.WebFetchTool;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.boot.SpringApplication;
@@ -19,10 +20,10 @@ public class Application {
 
     @Bean
     public ToolCallbackProvider registMCPTools(DateTool dateTool,
-                                               EmailTool emailTool, StockTool stockTool
+                                               EmailTool emailTool, StockTool stockTool, WebFetchTool webFetchTool
                                                ) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(dateTool, emailTool, stockTool)
+                .toolObjects(dateTool, emailTool, stockTool,webFetchTool)
                 .build();
     }
 }
