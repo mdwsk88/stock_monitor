@@ -21,7 +21,7 @@ public class AStockFetchUtil {
     public static void main(String[] args) throws Exception {
 
         String url = "https://np-anotice-stock.eastmoney.com/api/security/ann" +
-                "?sr=-1&st=notice_date&page_size=20&page_index=1&ann_type=A&client=web";
+                "?sr=-1&page_size=50&page_index=1&ann_type=SHA,CYB,SZA,BJA,INV&client_source=web&f_node=3,5,6&s_node=0";
 
         CloseableHttpClient httpClient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(url);

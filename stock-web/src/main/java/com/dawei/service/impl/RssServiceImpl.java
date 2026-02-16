@@ -1,9 +1,7 @@
 package com.dawei.service.impl;
 
 import cn.hutool.json.JSONUtil;
-import com.dawei.entity.BaiduTransEntity;
-import com.dawei.entity.USStockMsg;
-import com.dawei.entity.USStockRss;
+import com.dawei.entity.*;
 import com.dawei.enums.StockTag;
 import com.dawei.service.RssService;
 import com.dawei.service.StockService;
@@ -13,14 +11,22 @@ import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 import jakarta.annotation.Resource;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.net.URL;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 @Service
 public class RssServiceImpl implements RssService {
     @Resource
@@ -204,6 +210,104 @@ public class RssServiceImpl implements RssService {
         }
 
         return tagStr;
+    }
+
+    // ============== A股相关方法 ==============
+
+    /**
+     * A股公告API地址
+     * 原地址：https://data.eastmoney.com/notices/hsa/7.html
+     */
+    public static final String A_STOCK_NOTICE_URL = "https://np-anotice-stock.eastmoney.com/api/security/ann" +
+            "?sr=-1&page_size=100&page_index=1&ann_type=SHA,CYB,SZA,BJA,INV&client_source=web&f_node=3,5,6&s_node=0";
+
+    @Override
+    public void fetchAndSaveAStockNotices() throws Exception {
+        List<AStockMsg> aStockMsgList = new ArrayList<>();
+
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+        HttpGet httpGet = new HttpGet(A_STOCK_NOTICE_URL);
+
+        // 模拟浏览器（很重要）
+        httpGet.setHeader("User-Agent", "Mozilla/5.0");
+        httpGet.setHeader("Accept", "application/json");
+
+        String json = httpClient.execute(httpGet,
+                response -> EntityUtils.toString(response.getEntity(), "UTF-8"));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(json);
+
+        JsonNode list = root.path("data").path("list");
+
+        // displayTime 格式：2026-02-14 21:23:18:673 (冒号分隔的毫秒)
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        for (JsonNode node : list) {
+            String stockCode = node.get("codes").get(0).get("stock_code").asString();
+            String stockName = node.get("codes").get(0).get("short_name").asString();
+            String title = node.get("title").asString();
+            String tag = node.get("columns").get(0).get("column_name").asString();
+            String displayTime = node.get("display_time").asString();
+
+            // 处理时间格式：去掉毫秒部分（:673），只保留 yyyy-MM-dd HH:mm:ss
+            if (displayTime != null && displayTime.length() > 19) {
+                displayTime = displayTime.substring(0, 19);
+            }
+
+            // 解析公告时间
+            LocalDateTime pubDate = LocalDateTime.parse(displayTime, formatter);
+
+            // 判断公告是否已存在
+            if (stockService.isAStockNewsExist(stockCode, title, displayTime)) {
+                System.out.println("A股公告已存在，跳过：【" + stockCode + " - " + stockName + "】" + title);
+                continue;
+            }
+
+            // 创建并保存A股公告
+            AStockRss aStockRss = new AStockRss();
+            aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
+            aStockRss.setStockCode(stockCode);
+            aStockRss.setStockName(stockName);
+            aStockRss.setTitle(title);
+            aStockRss.setTag(tag);
+            aStockRss.setPubDate(pubDate);
+            // 东方财富公告链接
+            aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
+
+            stockService.saveAStockNews(aStockRss);
+
+            System.out.println("A股公告保存成功：" + aStockRss);
+
+            // 统计该股票在24小时、3天、1周内的公告次数
+            Long counts24Hour = stockService.getAStockNoticeCounts(stockCode,
+                    GMTDateConverter.minus24Hour(pubDate),
+                    GMTDateConverter.plus1Minute(pubDate));
+            Long counts3Day = stockService.getAStockNoticeCounts(stockCode,
+                    GMTDateConverter.minus3Day(pubDate),
+                    GMTDateConverter.plus1Minute(pubDate));
+            Long counts1Week = stockService.getAStockNoticeCounts(stockCode,
+                    GMTDateConverter.minus1Week(pubDate),
+                    GMTDateConverter.plus1Minute(pubDate));
+
+            // 添加到消息列表
+            AStockMsg aStockMsg = new AStockMsg();
+            aStockMsg.setStockCode(stockCode);
+            aStockMsg.setStockName(stockName);
+            aStockMsg.setTitle(title);
+            aStockMsg.setTag(tag);
+            aStockMsg.setPubDate(displayTime);
+            aStockMsg.setCounts24Hour(counts24Hour.intValue());
+            aStockMsg.setCounts3Day(counts3Day.intValue());
+            aStockMsg.setCounts1Week(counts1Week.intValue());
+
+            aStockMsgList.add(aStockMsg);
+        }
+
+        // 发送消息通知
+        if (!aStockMsgList.isEmpty()) {
+            weComApi.sendMarkdownMessage(weComApi.formatAStockInfoFromList(aStockMsgList));
+        }
     }
 
 }
