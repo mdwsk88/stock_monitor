@@ -1,5 +1,6 @@
 package com.dawei.utils;
 
+import com.dawei.entity.AStockMsg;
 import com.dawei.entity.USStockMsg;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -157,5 +158,38 @@ public class WeComApi {
             log.error("企业微信消息发送失败: {}", e.getMessage(), e);
             throw new RuntimeException("企业微信消息发送失败: " + e.getMessage(), e);
         }
+    }
+
+    // ============== A股相关方法 ==============
+
+    /**
+     * @Description: 格式化单条A股公告消息
+     * @Author 风间影月
+     * @param aStockMsg
+     */
+    public String formatAStockInfo(AStockMsg aStockMsg) {
+        return "<font color=\"info\">📌 代码：</font>" + aStockMsg.getStockCode() + "\n" +
+               "<font color=\"info\">🏢 名称：</font>" + aStockMsg.getStockName() + "\n" +
+               "<font color=\"comment\">📅 时间：</font>" + aStockMsg.getPubDate() + "\n" +
+               "<font color=\"comment\">📰 标题：</font>" + aStockMsg.getTitle() + "\n" +
+               "<font color=\"warning\">🏷️ 类型：</font>" + aStockMsg.getTag() + "\n" +
+               "<font color=\"comment\">📊 统计：</font>24小时=" + aStockMsg.getCounts24Hour() + "次; " +
+               "3天内=" + aStockMsg.getCounts3Day() + "次; " +
+               "1周内=" + aStockMsg.getCounts1Week() + "次";
+    }
+
+    /**
+     * @Description: 格式化多条A股公告消息
+     * @Author 风间影月
+     * @param stocks
+     */
+    public String formatAStockInfoFromList(List<AStockMsg> stocks) {
+        if (stocks == null || stocks.isEmpty()) {
+            return "暂无A股公告信息";
+        }
+        String header = "## 📊 A股最新公告\n\n";
+        return header + stocks.stream()
+                .map(this::formatAStockInfo)
+                .collect(Collectors.joining("\n\n----------\n\n"));
     }
 }

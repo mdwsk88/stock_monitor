@@ -33,13 +33,26 @@ public class StockScheduler {
 //    0 0/30 9-17 * * ? 朝九晚五工作时间内每半小时
 //    0 0 10,14,16 * * ? 每天上午10点，下午2点，4点
 
-    // 定时任务，定时抓取股票数据信息
+    // ============== 美股定时任务 ==============
+
+    // 定时任务，定时抓取美股数据信息
     //@Scheduled(cron = "0 */30 * * * ?")
-    @Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000)
-    public void getStockInfo() throws Exception {
-        System.out.println("每隔一段时间运行..." + LocalDateTime.now());
+    //@Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000)
+    public void getUSStockInfo() throws Exception {
+        System.out.println("【美股】每隔一段时间运行..." + LocalDateTime.now());
         rssService.displayRss();
-        System.out.println("定时任务执行结束=======================");
+        System.out.println("【美股】定时任务执行结束=======================");
+    }
+
+    // ============== A股定时任务 ==============
+
+    // 定时任务，定时抓取A股公告信息
+    // A股交易时间：周一至周五 9:30-11:30, 13:00-15:00
+    @Scheduled(initialDelay = 10 * 1000, fixedDelay = 5 * 60 * 1000)
+    public void getAStockInfo() throws Exception {
+        System.out.println("【A股】每隔一段时间运行..." + LocalDateTime.now());
+        rssService.fetchAndSaveAStockNotices();
+        System.out.println("【A股】定时任务执行结束=======================");
     }
 
 }

@@ -1,7 +1,9 @@
 package com.dawei.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.dawei.entity.AStockRss;
 import com.dawei.entity.USStockRss;
+import com.dawei.mapper.AStockRssMapper;
 import com.dawei.mapper.USStockRssMapper;
 import com.dawei.service.StockService;
 import jakarta.annotation.Resource;
@@ -21,6 +23,11 @@ public class StockServiceImpl implements StockService {
 
     @Resource
     private USStockRssMapper usStockRssMapper;
+
+    @Resource
+    private AStockRssMapper aStockRssMapper;
+
+    // ============== 美股相关方法 ==============
 
     @Override
     public void saveStockNews(USStockRss stockNews) {
@@ -54,5 +61,38 @@ public class StockServiceImpl implements StockService {
         queryWrapper.le("pub_date_gmt", endDateStr);
 
         return usStockRssMapper.selectCount(queryWrapper);
+    }
+
+    // ============== A股相关方法 ==============
+
+    @Override
+    public void saveAStockNews(AStockRss aStockNews) {
+        aStockRssMapper.insert(aStockNews);
+    }
+
+    @Override
+    public Boolean isAStockNewsExist(String stockCode, String title, String pubDate) {
+        QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("stock_code", stockCode);
+        queryWrapper.eq("title", title);
+        queryWrapper.eq("pub_date", pubDate);
+
+        return aStockRssMapper.selectCount(queryWrapper) > 0;
+    }
+
+    @Override
+    public Long getAStockNoticeCounts(String stockCode, LocalDateTime startDate, LocalDateTime endDate) {
+        QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("stock_code", stockCode);
+
+//        数据库中的日期时间格式： yyyy-MM-dd HH:mm:ss
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        String startDateStr = formatter.format(startDate);
+        String endDateStr = formatter.format(endDate);
+
+        queryWrapper.ge("pub_date", startDateStr);
+        queryWrapper.le("pub_date", endDateStr);
+
+        return aStockRssMapper.selectCount(queryWrapper);
     }
 }
