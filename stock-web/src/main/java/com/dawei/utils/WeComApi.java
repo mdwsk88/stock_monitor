@@ -173,9 +173,9 @@ public class WeComApi {
                "<font color=\"comment\">📅 时间：</font>" + aStockMsg.getPubDate() + "\n" +
                "<font color=\"comment\">📰 标题：</font>" + aStockMsg.getTitle() + "\n" +
                "<font color=\"warning\">🏷️ 类型：</font>" + aStockMsg.getTag() + "\n" +
-               "<font color=\"comment\">📊 统计：</font>24小时=" + aStockMsg.getCounts24Hour() + "次; " +
-               "3天内=" + aStockMsg.getCounts3Day() + "次; " +
-               "1周内=" + aStockMsg.getCounts1Week() + "次";
+               "<font color=\"comment\">📊 统计：</font>24小时异动=" + aStockMsg.getCounts24Hour() + "次; " +
+               "3天内异动=" + aStockMsg.getCounts3Day() + "次; " +
+               "1周内异动=" + aStockMsg.getCounts1Week() + "次";
     }
 
     /**
@@ -187,8 +187,8 @@ public class WeComApi {
         if (stocks == null || stocks.isEmpty()) {
             return "暂无A股公告信息";
         }
-        String header = "## 📊 A股最新公告\n\n";
-        return header + stocks.stream()
+
+        return stocks.stream()
                 .map(this::formatAStockInfo)
                 .collect(Collectors.joining("\n\n----------\n\n"));
     }

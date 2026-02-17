@@ -12,6 +12,7 @@
     <modules>
         <module>stock-web</module>
         <module>stock-mcp</module>
+        <module>AStock-mcp</module>
     </modules>
 
     <properties>
