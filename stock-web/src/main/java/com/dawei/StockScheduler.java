@@ -37,7 +37,7 @@ public class StockScheduler {
 
     // 定时任务，定时抓取美股数据信息
     //@Scheduled(cron = "0 */30 * * * ?")
-    //@Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000)
+    @Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000)
     public void getUSStockInfo() throws Exception {
         System.out.println("【美股】每隔一段时间运行..." + LocalDateTime.now());
         rssService.displayRss();

@@ -2,7 +2,7 @@ spring:
   application:
     name: mcp-server
   profiles:
-    active: dev
+    active: prod
   ai:
     mcp:
       server:
