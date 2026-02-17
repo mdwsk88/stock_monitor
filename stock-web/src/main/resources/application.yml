@@ -2,7 +2,7 @@ spring:
   application:
     name: us-stock-monitor-web
   profiles:
-    active: dev
+    active: prod
 logging:
   level:
     root: info
