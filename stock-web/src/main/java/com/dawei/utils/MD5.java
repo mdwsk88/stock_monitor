@@ -8,7 +8,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * MD5编码相关的类
  *
- * @author wangjingtao
+ * @author dawei
  *
  */
 public class MD5 {

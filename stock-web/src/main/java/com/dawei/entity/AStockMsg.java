@@ -7,7 +7,7 @@ import lombok.ToString;
 
 /**
  * @ClassName AStockMsg
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description A股公告消息展示类
  **/

@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * @ClassName AStockRssMapper
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description A股RSS数据Mapper
  **/
