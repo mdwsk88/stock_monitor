@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * @ClassName USStockRssMapper
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description USStockRssMapper
  **/

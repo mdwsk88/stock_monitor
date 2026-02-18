@@ -20,7 +20,7 @@ import com.vladsch.flexmark.util.data.MutableDataSet;
 
 /**
  * @ClassName DateTool
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description DateTool
  **/
@@ -88,7 +88,7 @@ public class EmailTool {
 
     /**
      * @Description: markdown 转 html
-     * @Author 风间影月
+     * @Author dawei
      * @param markdownContent
      * @return String
      */

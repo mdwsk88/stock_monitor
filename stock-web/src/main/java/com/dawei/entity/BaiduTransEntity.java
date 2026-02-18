@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * @ClassName BaiduTransEntity
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description BaiduTransEntity
  **/

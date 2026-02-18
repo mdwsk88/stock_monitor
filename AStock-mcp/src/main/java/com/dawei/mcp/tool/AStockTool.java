@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * @ClassName AStockTool
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description A股MCP工具类，提供A股数据查询服务
  **/

@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 
 /**
  * @ClassName WeComApi
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description 企业微信机器人 Webhook API
  **/
@@ -38,7 +38,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化单条股票消息
-     * @Author 风间影月
+     * @Author dawei
      * @param stockMsg
      */
     public String formatStockInfo(USStockMsg stockMsg) {
@@ -54,7 +54,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化多条股票消息
-     * @Author 风间影月
+     * @Author dawei
      * @param stocks
      */
     public String formatStockInfoFromList(List<USStockMsg> stocks) {
@@ -68,7 +68,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化单条股票消息为普通文本格式（用于文本消息）
-     * @Author 风间影月
+     * @Author dawei
      * @param stockMsg
      */
     public String formatStockInfoText(USStockMsg stockMsg) {
@@ -84,7 +84,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化多条股票消息为普通文本格式（用于文本消息）
-     * @Author 风间影月
+     * @Author dawei
      * @param stocks
      */
     public String formatStockInfoTextFromList(List<USStockMsg> stocks) {
@@ -98,7 +98,7 @@ public class WeComApi {
 
     /**
      * @Description: 发送 Markdown 格式消息到企业微信
-     * @Author 风间影月
+     * @Author dawei
      * @param markdownContent
      */
     public void sendMarkdownMessage(String markdownContent) {
@@ -130,7 +130,7 @@ public class WeComApi {
 
     /**
      * @Description: 发送文本消息到企业微信
-     * @Author 风间影月
+     * @Author dawei
      * @param textContent
      */
     public void sendTextMessage(String textContent) {
@@ -164,7 +164,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化单条A股公告消息
-     * @Author 风间影月
+     * @Author dawei
      * @param aStockMsg
      */
     public String formatAStockInfo(AStockMsg aStockMsg) {
@@ -180,7 +180,7 @@ public class WeComApi {
 
     /**
      * @Description: 格式化多条A股公告消息
-     * @Author 风间影月
+     * @Author dawei
      * @param stocks
      */
     public String formatAStockInfoFromList(List<AStockMsg> stocks) {

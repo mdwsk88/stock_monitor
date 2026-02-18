@@ -6,7 +6,7 @@ import org.springframework.web.client.RestTemplate;
 
 /**
  * @ClassName RestTemplateConfig
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description RestTemplateConfig
  **/

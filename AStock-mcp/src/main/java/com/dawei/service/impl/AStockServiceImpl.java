@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * @ClassName AStockServiceImpl
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description A股数据服务实现类
  **/

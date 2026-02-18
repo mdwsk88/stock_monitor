@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 /**
  * @ClassName DingTalkApi
- * @Author 风间影月
+ * @Author dawei
  * @Version 1.0
  * @Description DingTalkApi
  **/
@@ -47,7 +47,7 @@ public class DingTalkApi {
 
     /**
      * @Description: 格式化消息的内容
-     * @Author 风间影月
+     * @Author dawei
      * @param stockMsg
      */
     public String formatStockInfo(USStockMsg stockMsg) {
