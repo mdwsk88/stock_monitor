@@ -148,8 +148,8 @@ public class RssServiceImpl implements RssService {
 
         if (!stockMsgList.isEmpty()) {
             //dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
-            weComApi.sendMarkdownMessage(weComApi.formatStockInfoFromList(stockMsgList));
-            //weComApi.sendTextMessage(weComApi.formatStockInfoTextFromList(stockMsgList));
+            weComApi.sendMarkdownMessage(weComApi.formatStockInfoFromList(stockMsgList), WeComApi.MarketType.US);
+            //weComApi.sendTextMessage(weComApi.formatStockInfoTextFromList(stockMsgList), WeComApi.MarketType.US);
         }
 
     }
@@ -272,6 +272,8 @@ public class RssServiceImpl implements RssService {
             aStockRss.setTitle(title);
             aStockRss.setTag(tag);
             aStockRss.setPubDate(pubDate);
+            // 设置当前插入时间
+            aStockRss.setCreateTime(LocalDateTime.now());
             // 东方财富公告链接
             aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
 
@@ -306,7 +308,7 @@ public class RssServiceImpl implements RssService {
 
         // 发送消息通知
         if (!aStockMsgList.isEmpty()) {
-            weComApi.sendMarkdownMessage(weComApi.formatAStockInfoFromList(aStockMsgList));
+            weComApi.sendMarkdownMessage(weComApi.formatAStockInfoFromList(aStockMsgList), WeComApi.MarketType.A);
         }
     }
 

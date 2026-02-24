@@ -19,21 +19,57 @@ import java.util.stream.Collectors;
  * @ClassName WeComApi
  * @Author dawei
  * @Version 1.0
- * @Description 企业微信机器人 Webhook API
+ * @Description 企业微信机器人 Webhook API - 支持多市场推送（美股、A股、港股）
  **/
 @Slf4j
 @Service
 public class WeComApi {
 
-    @Value("${WECOM_WEBHOOK_URL}")
-    private String webhookUrl;
+    // 美股 Webhook URL
+    @Value("${WECOM_WEBHOOK_URL_US:}")
+    private String webhookUrlUs;
+
+    // A股 Webhook URL
+    @Value("${WECOM_WEBHOOK_URL_A:}")
+    private String webhookUrlA;
+
+    // 港股 Webhook URL
+    @Value("${WECOM_WEBHOOK_URL_HK:}")
+    private String webhookUrlHk;
+
+    // 兼容旧配置（如果新的配置不存在，则使用旧的配置）
+    @Value("${WECOM_WEBHOOK_URL:}")
+    private String webhookUrlDefault;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     public WeComApi() {}
 
-    public WeComApi(String webhookUrl) {
-        this.webhookUrl = webhookUrl;
+    /**
+     * 市场类型枚举
+     */
+    public enum MarketType {
+        US,   // 美股
+        A,    // A股
+        HK    // 港股
+    }
+
+    /**
+     * 获取指定市场的 Webhook URL
+     */
+    private String getWebhookUrl(MarketType marketType) {
+        String url = switch (marketType) {
+            case US -> webhookUrlUs;
+            case A -> webhookUrlA;
+            case HK -> webhookUrlHk;
+        };
+        
+        // 如果特定市场的配置为空，则尝试使用默认配置
+        if (url == null || url.isEmpty()) {
+            url = webhookUrlDefault;
+        }
+        
+        return url;
     }
 
     /**
@@ -97,13 +133,16 @@ public class WeComApi {
     }
 
     /**
-     * @Description: 发送 Markdown 格式消息到企业微信
+     * @Description: 发送 Markdown 格式消息到企业微信（指定市场）
      * @Author dawei
-     * @param markdownContent
+     * @param markdownContent 消息内容
+     * @param marketType 市场类型（美股、A股、港股）
      */
-    public void sendMarkdownMessage(String markdownContent) {
+    public void sendMarkdownMessage(String markdownContent, MarketType marketType) {
+        String webhookUrl = getWebhookUrl(marketType);
+        
         if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.warn("企业微信 webhook URL 未配置，跳过发送");
+            log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
             return;
         }
 
@@ -121,21 +160,33 @@ public class WeComApi {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             String response = restTemplate.postForObject(webhookUrl, request, String.class);
             
-            log.info("企业微信消息发送成功，响应: {}", response);
+            log.info("企业微信消息发送成功（市场: {}），响应: {}", marketType, response);
         } catch (Exception e) {
-            log.error("企业微信消息发送失败: {}", e.getMessage(), e);
+            log.error("企业微信消息发送失败（市场: {}）: {}", marketType, e.getMessage(), e);
             throw new RuntimeException("企业微信消息发送失败: " + e.getMessage(), e);
         }
     }
 
     /**
-     * @Description: 发送文本消息到企业微信
+     * @Description: 发送 Markdown 格式消息到企业微信（向后兼容，使用默认配置）
      * @Author dawei
-     * @param textContent
+     * @param markdownContent 消息内容
      */
-    public void sendTextMessage(String textContent) {
+    public void sendMarkdownMessage(String markdownContent) {
+        sendMarkdownMessage(markdownContent, MarketType.US);
+    }
+
+    /**
+     * @Description: 发送文本消息到企业微信（指定市场）
+     * @Author dawei
+     * @param textContent 消息内容
+     * @param marketType 市场类型（美股、A股、港股）
+     */
+    public void sendTextMessage(String textContent, MarketType marketType) {
+        String webhookUrl = getWebhookUrl(marketType);
+        
         if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.warn("企业微信 webhook URL 未配置，跳过发送");
+            log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
             return;
         }
 
@@ -153,11 +204,20 @@ public class WeComApi {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             String response = restTemplate.postForObject(webhookUrl, request, String.class);
             
-            log.info("企业微信消息发送成功，响应: {}", response);
+            log.info("企业微信消息发送成功（市场: {}），响应: {}", marketType, response);
         } catch (Exception e) {
-            log.error("企业微信消息发送失败: {}", e.getMessage(), e);
+            log.error("企业微信消息发送失败（市场: {}）: {}", marketType, e.getMessage(), e);
             throw new RuntimeException("企业微信消息发送失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * @Description: 发送文本消息到企业微信（向后兼容，使用默认配置）
+     * @Author dawei
+     * @param textContent 消息内容
+     */
+    public void sendTextMessage(String textContent) {
+        sendTextMessage(textContent, MarketType.US);
     }
 
     // ============== A股相关方法 ==============

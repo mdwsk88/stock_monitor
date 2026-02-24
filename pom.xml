@@ -11,8 +11,8 @@
     <packaging>pom</packaging>
     <modules>
         <module>stock-web</module>
-        <module>stock-mcp</module>
-        <module>AStock-mcp</module>
+        <module>us-stock-mcp</module>
+        <module>a-stock-mcp</module>
     </modules>
 
     <properties>
