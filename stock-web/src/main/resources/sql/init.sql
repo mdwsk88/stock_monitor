@@ -35,7 +35,9 @@ CREATE TABLE `a_stock_rss` (
   `tag` varchar(100) DEFAULT NULL COMMENT '公告分类标签',
   `link` varchar(500) DEFAULT NULL COMMENT '公告链接',
   `pub_date` datetime DEFAULT NULL COMMENT '发布时间',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_stock_code` (`stock_code`),
-  KEY `idx_pub_date` (`pub_date`)
+  KEY `idx_pub_date` (`pub_date`),
+  KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='A股公告信息表';

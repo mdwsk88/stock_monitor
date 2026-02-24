@@ -1,3 +1,13 @@
+# 企业微信机器人 Webhook 配置（支持多市场）
+# 美股推送
+WECOM_WEBHOOK_URL_US: ${WECOM_WEBHOOK_URL_US:}
+# A股推送
+WECOM_WEBHOOK_URL_A: ${WECOM_WEBHOOK_URL_A:}
+# 港股推送（预留）
+WECOM_WEBHOOK_URL_HK: ${WECOM_WEBHOOK_URL_HK:}
+# 兼容旧配置：如果以上配置为空，将使用此默认配置
+WECOM_WEBHOOK_URL: ${WECOM_WEBHOOK_URL:}
+
 server:
   port: 8080
 spring:

@@ -1,5 +1,7 @@
 package com.dawei.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -28,5 +30,6 @@ public class AStockRss {
     private String tag;
     private String link;
     private LocalDateTime pubDate;
+    private LocalDateTime createTime;
 
 }
