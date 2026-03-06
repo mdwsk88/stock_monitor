@@ -17,8 +17,8 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URL;
 import java.time.LocalDateTime;
@@ -244,11 +244,11 @@ public class RssServiceImpl implements RssService {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
         for (JsonNode node : list) {
-            String stockCode = node.get("codes").get(0).get("stock_code").asString();
-            String stockName = node.get("codes").get(0).get("short_name").asString();
-            String title = node.get("title").asString();
-            String tag = node.get("columns").get(0).get("column_name").asString();
-            String displayTime = node.get("display_time").asString();
+            String stockCode = node.get("codes").get(0).get("stock_code").asText();
+            String stockName = node.get("codes").get(0).get("short_name").asText();
+            String title = node.get("title").asText();
+            String tag = node.get("columns").get(0).get("column_name").asText();
+            String displayTime = node.get("display_time").asText();
 
             // 处理时间格式：去掉毫秒部分（:673），只保留 yyyy-MM-dd HH:mm:ss
             if (displayTime != null && displayTime.length() > 19) {

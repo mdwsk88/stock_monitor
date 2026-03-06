@@ -5,8 +5,8 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * @ClassName AStockFetchUtil
@@ -39,11 +39,11 @@ public class AStockFetchUtil {
         JsonNode list = root.path("data").path("list");
 
         for (JsonNode node : list) {
-            String stockCode = node.get("codes").get(0).get("stock_code").asString();
-            String stockName = node.get("codes").get(0).get("short_name").asString();
-            String title = node.get("title").asString();
-            String tag = node.get("columns").get(0).get("column_name").asString();
-            String displayTime = node.get("display_time").asString();
+            String stockCode = node.get("codes").get(0).get("stock_code").asText();
+            String stockName = node.get("codes").get(0).get("short_name").asText();
+            String title = node.get("title").asText();
+            String tag = node.get("columns").get(0).get("column_name").asText();
+            String displayTime = node.get("display_time").asText();
 
             System.out.println(
             "A-Stock-News {" +

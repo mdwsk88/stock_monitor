@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter;
 @Slf4j
 public class DateTool {
 
-    @Tool(description = "根据城市所在的时区ID来获得当前时间")
+    //@Tool(description = "根据城市所在的时区ID来获得当前时间")
     public String getCurrentTimeByZoneId(String cityName, String zoneId) {
         log.info("========== 调用MCP工具：getCurrentTimeByZoneId() ==========");
         log.info(String.format("| cityName: %s", cityName));
@@ -32,7 +32,7 @@ public class DateTool {
         return result;
     }
 
-    @Tool(description = "获取当前时间")
+    //@Tool(description = "获取当前时间")
     public String getCurrentTime() {
         log.info("========== 调用MCP工具：getCurrentTime() ==========");
 

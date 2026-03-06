@@ -52,12 +52,12 @@ public class EmailTool {
         private Integer contentType;
     }
 
-    @Tool(description = "查询老板的邮件/邮箱地址")
+    //@Tool(description = "查询老板的邮件/邮箱地址")
     public String getMyEmail() {
         return "924038395@qq.com";
     }
 
-    @Tool(description = "给指定的邮箱发送邮件信息，email 为收件人地址，subject 为邮件标题，content 为邮件的内容")
+    //@Tool(description = "给指定的邮箱发送邮件信息，email 为收件人地址，subject 为邮件标题，content 为邮件的内容")
     public void sendMail(EmailInfo emailInfo) {
         log.info("========== 调用MCP工具：sendMail() ==========");
 

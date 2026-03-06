@@ -3,6 +3,15 @@ spring:
     name: us-stock-monitor-web
   profiles:
     active: prod
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL}
+          temperature: 0.7
+
 logging:
   level:
     root: info
