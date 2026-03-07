@@ -19,11 +19,10 @@ public class Application {
     }
 
     @Bean
-    public ToolCallbackProvider registMCPTools(DateTool dateTool,
-                                               EmailTool emailTool, StockTool stockTool, WebFetchTool webFetchTool
+    public ToolCallbackProvider registMCPTools(StockTool stockTool, WebFetchTool webFetchTool
                                                ) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(dateTool, emailTool, stockTool,webFetchTool)
+                .toolObjects(stockTool,webFetchTool)
                 .build();
     }
 }
