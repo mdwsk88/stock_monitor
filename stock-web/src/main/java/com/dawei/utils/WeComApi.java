@@ -73,6 +73,17 @@ public class WeComApi {
     }
 
     /**
+     * 获取指定市场的机器人名称
+     */
+    private String getBotName(MarketType marketType) {
+        return switch (marketType) {
+            case US -> "美股分析专家";
+            case A -> "A股分析专家";
+            case HK -> "港股分析专家";
+        };
+    }
+
+    /**
      * @Description: 格式化单条股票消息
      * @Author dawei
      * @param stockMsg
