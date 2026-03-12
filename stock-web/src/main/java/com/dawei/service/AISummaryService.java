@@ -43,4 +43,28 @@ public interface AISummaryService {
      * @return 完整的企业微信 Markdown 消息
      */
     String generateAMorningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate);
+
+    /**
+     * 生成A股盘后复盘的企业微信 Markdown 格式消息（晚间复盘模板）
+     * @param stockAlertList A股异动数据列表（包含频次）
+     * @param reportDate 报告日期
+     * @return 完整的企业微信 Markdown 消息
+     */
+    String generateAEveningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate);
+
+    /**
+     * 生成美股夜报（盘前预警）的企业微信 Markdown 格式消息（晚间模板）
+     * @param stockAlertList 美股异动数据列表（包含频次）
+     * @param reportDate 报告日期
+     * @return 完整的企业微信 Markdown 消息
+     */
+    String generateUSEveningReportMarkdown(List<StockAlertDTO<USStockRss>> stockAlertList, String reportDate);
+
+    /**
+     * 生成美股早报（隔夜复盘）的企业微信 Markdown 格式消息（复盘模板）
+     * @param stockAlertList 美股异动数据列表（包含频次）
+     * @param reportDate 报告日期
+     * @return 完整的企业微信 Markdown 消息
+     */
+    String generateUSOvernightRecapMarkdown(List<StockAlertDTO<USStockRss>> stockAlertList, String reportDate);
 }

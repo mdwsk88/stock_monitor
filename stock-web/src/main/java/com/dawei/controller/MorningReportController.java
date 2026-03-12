@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * @ClassName MorningReportController
  * @Author dawei
- * @Version 1.0
- * @Description 盘前早报手动触发接口（用于测试）
+ * @Version 2.0
+ * @Description 早报/复盘/夜报手动触发接口（用于测试）
  **/
 @Slf4j
 @RestController
@@ -27,18 +27,20 @@ public class MorningReportController {
     }
 
     /**
-     * 手动触发美股盘前早报
+     * 手动触发美股早报（隔夜复盘）- 早上7:30
+     * 数据范围：过去12小时（昨晚20:00到今早8:00）
      */
-    @GetMapping("/push/us")
+    @GetMapping("/push/us/morning")
     public Map<String, Object> pushUSMorningReport() {
         Map<String, Object> result = new HashMap<>();
         try {
-            log.info("手动触发美股盘前早报");
+            log.info("手动触发美股早报（隔夜复盘）");
             morningReportScheduler.pushUSMorningReport();
             result.put("success", true);
-            result.put("message", "美股盘前早报推送成功");
+            result.put("message", "美股早报（隔夜复盘）推送成功");
+            result.put("dataRange", "过去12小时（昨晚20:00到今早8:00）");
         } catch (Exception e) {
-            log.error("手动触发美股盘前早报失败: {}", e.getMessage(), e);
+            log.error("手动触发美股早报失败: {}", e.getMessage(), e);
             result.put("success", false);
             result.put("message", "推送失败: " + e.getMessage());
         }
@@ -46,9 +48,10 @@ public class MorningReportController {
     }
 
     /**
-     * 手动触发A股盘前早报
+     * 手动触发A股盘前早报 - 早上8:30
+     * 数据范围：过去24小时（昨天8:30到今天8:30）
      */
-    @GetMapping("/push/a")
+    @GetMapping("/push/a/morning")
     public Map<String, Object> pushAMorningReport() {
         Map<String, Object> result = new HashMap<>();
         try {
@@ -56,10 +59,107 @@ public class MorningReportController {
             morningReportScheduler.pushAMorningReport();
             result.put("success", true);
             result.put("message", "A股盘前早报推送成功");
+            result.put("dataRange", "过去24小时（昨天8:30到今天8:30）");
         } catch (Exception e) {
             log.error("手动触发A股盘前早报失败: {}", e.getMessage(), e);
             result.put("success", false);
             result.put("message", "推送失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 手动触发A股盘后复盘 - 下午15:30
+     * 数据范围：当天9:00到15:00（过去6小时）
+     */
+    @GetMapping("/push/a/evening")
+    public Map<String, Object> pushAEveningReport() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            log.info("手动触发A股盘后复盘");
+            morningReportScheduler.pushAEveningReport();
+            result.put("success", true);
+            result.put("message", "A股盘后复盘推送成功");
+            result.put("dataRange", "当天9:00到15:00（过去6小时）");
+        } catch (Exception e) {
+            log.error("手动触发A股盘后复盘失败: {}", e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "推送失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 手动触发美股夜报（盘前预警）- 晚上20:30
+     * 数据范围：过去24小时（昨晚20:30到今晚20:30）
+     */
+    @GetMapping("/push/us/evening")
+    public Map<String, Object> pushUSEveningReport() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            log.info("手动触发美股夜报（盘前预警）");
+            morningReportScheduler.pushUSEveningReport();
+            result.put("success", true);
+            result.put("message", "美股夜报（盘前预警）推送成功");
+            result.put("dataRange", "过去24小时（昨晚20:30到今晚20:30）");
+        } catch (Exception e) {
+            log.error("手动触发美股夜报失败: {}", e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "推送失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 一键触发所有推送任务（测试用）
+     */
+    @GetMapping("/push/all")
+    public Map<String, Object> pushAllReports() {
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> details = new HashMap<>();
+        
+        try {
+            log.info("手动触发所有推送任务");
+            
+            // 美股早报（隔夜复盘）
+            try {
+                morningReportScheduler.pushUSMorningReport();
+                details.put("usMorning", Map.of("success", true, "message", "美股早报推送成功"));
+            } catch (Exception e) {
+                details.put("usMorning", Map.of("success", false, "message", e.getMessage()));
+            }
+            
+            // A股盘前早报
+            try {
+                morningReportScheduler.pushAMorningReport();
+                details.put("aMorning", Map.of("success", true, "message", "A股盘前早报推送成功"));
+            } catch (Exception e) {
+                details.put("aMorning", Map.of("success", false, "message", e.getMessage()));
+            }
+            
+            // A股盘后复盘
+            try {
+                morningReportScheduler.pushAEveningReport();
+                details.put("aEvening", Map.of("success", true, "message", "A股盘后复盘推送成功"));
+            } catch (Exception e) {
+                details.put("aEvening", Map.of("success", false, "message", e.getMessage()));
+            }
+            
+            // 美股夜报
+            try {
+                morningReportScheduler.pushUSEveningReport();
+                details.put("usEvening", Map.of("success", true, "message", "美股夜报推送成功"));
+            } catch (Exception e) {
+                details.put("usEvening", Map.of("success", false, "message", e.getMessage()));
+            }
+            
+            result.put("success", true);
+            result.put("message", "所有推送任务执行完成");
+            result.put("details", details);
+        } catch (Exception e) {
+            log.error("批量推送失败: {}", e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "批量推送失败: " + e.getMessage());
         }
         return result;
     }
