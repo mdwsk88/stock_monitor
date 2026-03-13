@@ -2,7 +2,7 @@ spring:
   application:
     name: a-stock-mcp-server
   profiles:
-    active: prod
+    active: ${SPRING_PROFILES_ACTIVE:prod}
   ai:
     mcp:
       server:
@@ -11,10 +11,10 @@ spring:
         sse-endpoint: /sse
         type: async                               # 异步
   mail:
-    host: smtp.163.com                            # 邮箱host
-    port: 465                                     # 邮箱固定端口
-    username: mdwsk88@163.com
-    password: QXwLBtGzrnd88WUV
+    host: ${SMTP_HOST:smtp.163.com}                            # 邮箱host
+    port: ${SMTP_PORT:465}                                     # 邮箱固定端口
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
     protocol: smtp                                # 邮箱协议
     default-encoding: UTF-8                       # 默认编码
     properties:

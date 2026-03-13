@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -88,9 +89,11 @@ class RssServiceImplTest {
             eq(String.class)
         )).thenReturn(mockResponse);
 
-        when(stockService.isAStockNewsExist(anyString(), anyString(), anyString())).thenReturn(false);
+        when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
         when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
-        doNothing().when(weComApi).sendMarkdownMessage(any(), any(WeComApi.MarketType.class));
+        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
+        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
+            .thenReturn(CompletableFuture.completedFuture(true));
 
         // 执行测试
         assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices());
@@ -104,7 +107,7 @@ class RssServiceImplTest {
         );
 
         // 验证数据保存
-        verify(stockService, atLeastOnce()).saveAStockNews(any(AStockRss.class));
+        verify(stockService, atLeastOnce()).saveAStockNewsIfAbsent(any(AStockRss.class));
 
         log.info("✅ A股公告抓取成功测试通过 - 确认使用 RestTemplate");
     }
@@ -159,12 +162,12 @@ class RssServiceImplTest {
 
         when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
             .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
-        when(stockService.isAStockNewsExist(anyString(), anyString(), anyString())).thenReturn(true);
+        when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(false);
 
         rssService.fetchAndSaveAStockNotices();
 
         // 验证已存在的数据不会重复保存
-        verify(stockService, never()).saveAStockNews(any());
+        verify(stockService, times(1)).saveAStockNewsIfAbsent(any(AStockRss.class));
 
         log.info("✅ A股公告去重测试通过");
     }
@@ -196,16 +199,17 @@ class RssServiceImplTest {
 
         when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
             .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
-        when(stockService.isAStockNewsExist(anyString(), anyString(), anyString())).thenReturn(false);
+        when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
         when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
-        doNothing().when(weComApi).sendMarkdownMessage(any(), any(WeComApi.MarketType.class));
+        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
+        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
+            .thenReturn(CompletableFuture.completedFuture(true));
 
         assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices(),
             "单条脏数据不应导致整批A股公告处理失败");
 
-        verify(stockService, times(1)).saveAStockNews(any(AStockRss.class));
-        verify(stockService, times(1)).isAStockNewsExist(eq("000001"), eq("正常公告"), eq("2026-03-13 10:30:00"));
-        verify(weComApi, times(1)).sendMarkdownMessage(any(), eq(WeComApi.MarketType.A));
+        verify(stockService, times(1)).saveAStockNewsIfAbsent(any(AStockRss.class));
+        verify(weComApi, times(1)).sendMarkdownMessageAsync(anyString(), eq(WeComApi.MarketType.A));
 
         log.info("✅ A股单条脏数据隔离测试通过");
     }
@@ -338,8 +342,8 @@ class RssServiceImplTest {
 
         assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices());
 
-        verify(stockService, never()).saveAStockNews(any());
-        verify(weComApi, never()).sendMarkdownMessage(anyString(), any());
+        verify(stockService, never()).saveAStockNewsIfAbsent(any());
+        verify(weComApi, never()).sendMarkdownMessageAsync(anyString(), any());
 
         log.info("✅ 空响应处理测试通过");
     }

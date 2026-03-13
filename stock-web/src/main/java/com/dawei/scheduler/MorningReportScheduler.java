@@ -66,7 +66,7 @@ public class MorningReportScheduler {
             if (topStocks.isEmpty()) {
                 log.warn("【美股早报（隔夜复盘）】过去24小时内无美股异动数据");
                 String noDataMsg = buildUSOvernightNoDataMessage(today);
-                weComApi.sendMarkdownMessage(noDataMsg, WeComApi.MarketType.US);
+                weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.US);
                 return;
             }
 
@@ -74,14 +74,14 @@ public class MorningReportScheduler {
             String markdownMessage = aiSummaryService.generateUSOvernightRecapMarkdown(topStocks, today);
 
             // 3. 直接推送AI生成的消息
-            weComApi.sendMarkdownMessage(markdownMessage, WeComApi.MarketType.US);
+            weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.US);
 
             log.info("【美股早报（隔夜复盘）】推送成功，共 {} 只股票", topStocks.size());
 
         } catch (Exception e) {
             log.error("【美股早报（隔夜复盘）】执行失败: {}", e.getMessage(), e);
             String errorMsg = buildUSOvernightErrorMessage(today, e.getMessage());
-            weComApi.sendMarkdownMessage(errorMsg, WeComApi.MarketType.US);
+            weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.US);
         }
     }
 
@@ -121,7 +121,7 @@ public class MorningReportScheduler {
             if (topStocks.isEmpty()) {
                 log.warn("【A股盘前早报】过去24小时内无A股公告数据");
                 String noDataMsg = buildNoDataMessage("A股", today);
-                weComApi.sendMarkdownMessage(noDataMsg, WeComApi.MarketType.A);
+                weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.A);
                 return;
             }
 
@@ -129,14 +129,14 @@ public class MorningReportScheduler {
             String markdownMessage = aiSummaryService.generateAMorningReportMarkdown(topStocks, today);
 
             // 3. 直接推送AI生成的消息
-            weComApi.sendMarkdownMessage(markdownMessage, WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.A);
 
             log.info("【A股盘前早报】推送成功，共 {} 只股票", topStocks.size());
 
         } catch (Exception e) {
             log.error("【A股盘前早报】执行失败: {}", e.getMessage(), e);
             String errorMsg = buildErrorMessage("A股", today, e.getMessage());
-            weComApi.sendMarkdownMessage(errorMsg, WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.A);
         }
     }
 
@@ -176,7 +176,7 @@ public class MorningReportScheduler {
             if (topStocks.isEmpty()) {
                 log.warn("【A股盘后复盘】过去24小时内无A股公告数据");
                 String noDataMsg = buildAStockNoDataEveningMessage(today);
-                weComApi.sendMarkdownMessage(noDataMsg, WeComApi.MarketType.A);
+                weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.A);
                 return;
             }
 
@@ -184,14 +184,14 @@ public class MorningReportScheduler {
             String markdownMessage = aiSummaryService.generateAEveningReportMarkdown(topStocks, today);
 
             // 3. 直接推送AI生成的消息
-            weComApi.sendMarkdownMessage(markdownMessage, WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.A);
 
             log.info("【A股盘后复盘】推送成功，共 {} 只股票", topStocks.size());
 
         } catch (Exception e) {
             log.error("【A股盘后复盘】执行失败: {}", e.getMessage(), e);
             String errorMsg = buildAStockErrorEveningMessage(today, e.getMessage());
-            weComApi.sendMarkdownMessage(errorMsg, WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.A);
         }
     }
 
@@ -221,7 +221,7 @@ public class MorningReportScheduler {
             if (topStocks.isEmpty()) {
                 log.warn("【美股今夜雷达】过去24小时内无美股异动数据");
                 String noDataMsg = buildUSStockNoDataEveningMessage(today);
-                weComApi.sendMarkdownMessage(noDataMsg, WeComApi.MarketType.US);
+                weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.US);
                 return;
             }
 
@@ -229,14 +229,14 @@ public class MorningReportScheduler {
             String markdownMessage = aiSummaryService.generateUSEveningReportMarkdown(topStocks, today);
 
             // 3. 直接推送AI生成的消息
-            weComApi.sendMarkdownMessage(markdownMessage, WeComApi.MarketType.US);
+            weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.US);
 
             log.info("【美股今夜雷达】推送成功，共 {} 只股票", topStocks.size());
 
         } catch (Exception e) {
             log.error("【美股今夜雷达】执行失败: {}", e.getMessage(), e);
             String errorMsg = buildUSStockErrorEveningMessage(today, e.getMessage());
-            weComApi.sendMarkdownMessage(errorMsg, WeComApi.MarketType.US);
+            weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.US);
         }
     }
 

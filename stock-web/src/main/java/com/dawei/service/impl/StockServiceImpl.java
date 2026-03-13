@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 /**
  * @ClassName StockServiceImpl
@@ -30,18 +31,9 @@ public class StockServiceImpl implements StockService {
     // ============== 美股相关方法 ==============
 
     @Override
-    public void saveStockNews(USStockRss stockNews) {
-        usStockRssMapper.insert(stockNews);
-    }
-
-    @Override
-    public Boolean isStockNewsExist(String stockCode, String link) {
-
-        QueryWrapper<USStockRss> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("stock_code", stockCode);
-        queryWrapper.eq("link", link);
-
-        return usStockRssMapper.selectCount(queryWrapper) > 0;
+    public boolean saveStockNewsIfAbsent(USStockRss stockNews) {
+        ensureId(stockNews);
+        return usStockRssMapper.insertIgnore(stockNews) > 0;
     }
 
     @Override
@@ -66,18 +58,9 @@ public class StockServiceImpl implements StockService {
     // ============== A股相关方法 ==============
 
     @Override
-    public void saveAStockNews(AStockRss aStockNews) {
-        aStockRssMapper.insert(aStockNews);
-    }
-
-    @Override
-    public Boolean isAStockNewsExist(String stockCode, String title, String pubDate) {
-        QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("stock_code", stockCode);
-        queryWrapper.eq("title", title);
-        queryWrapper.eq("pub_date", pubDate);
-
-        return aStockRssMapper.selectCount(queryWrapper) > 0;
+    public boolean saveAStockNewsIfAbsent(AStockRss aStockNews) {
+        ensureId(aStockNews);
+        return aStockRssMapper.insertIgnore(aStockNews) > 0;
     }
 
     @Override
@@ -94,5 +77,17 @@ public class StockServiceImpl implements StockService {
         queryWrapper.le("pub_date", endDateStr);
 
         return aStockRssMapper.selectCount(queryWrapper);
+    }
+
+    private void ensureId(USStockRss stockNews) {
+        if (stockNews.getId() == null || stockNews.getId().isBlank()) {
+            stockNews.setId(UUID.randomUUID().toString().replace("-", ""));
+        }
+    }
+
+    private void ensureId(AStockRss aStockNews) {
+        if (aStockNews.getId() == null || aStockNews.getId().isBlank()) {
+            aStockNews.setId(UUID.randomUUID().toString().replace("-", ""));
+        }
     }
 }

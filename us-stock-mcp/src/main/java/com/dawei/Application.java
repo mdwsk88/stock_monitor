@@ -1,6 +1,7 @@
 package com.dawei;
 
 
+import com.dawei.common.utils.DotenvLoader;
 import com.dawei.mcp.tool.DateTool;
 import com.dawei.mcp.tool.EmailTool;
 import com.dawei.mcp.tool.StockTool;
@@ -14,7 +15,7 @@ import org.springframework.context.annotation.Bean;
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) {
-
+        DotenvLoader.loadToSystemProperties();
         SpringApplication.run(Application.class, args);
     }
 

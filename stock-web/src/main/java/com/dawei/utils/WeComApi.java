@@ -2,14 +2,17 @@ package com.dawei.utils;
 
 import com.dawei.entity.AStockMsg;
 import com.dawei.entity.USStockMsg;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +26,7 @@ import java.util.stream.Collectors;
  **/
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class WeComApi {
 
     // 美股 Webhook URL
@@ -41,9 +45,7 @@ public class WeComApi {
     @Value("${WECOM_WEBHOOK_URL:}")
     private String webhookUrlDefault;
 
-    private final RestTemplate restTemplate = new RestTemplate();
-
-    public WeComApi() {}
+    private final RestTemplate restTemplate;
 
     /**
      * 市场类型枚举
@@ -150,32 +152,15 @@ public class WeComApi {
      * @param marketType 市场类型（美股、A股、港股）
      */
     public void sendMarkdownMessage(String markdownContent, MarketType marketType) {
-        String webhookUrl = getWebhookUrl(marketType);
-        
-        if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
-            return;
+        boolean success = sendMessage(markdownContent, "markdown", marketType);
+        if (!success && hasWebhook(marketType)) {
+            throw new RuntimeException("企业微信消息发送失败");
         }
+    }
 
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            Map<String, Object> markdown = new HashMap<>();
-            markdown.put("content", markdownContent);
-
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("msgtype", "markdown");
-            requestBody.put("markdown", markdown);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            String response = restTemplate.postForObject(webhookUrl, request, String.class);
-            
-            log.info("企业微信消息发送成功（市场: {}），响应: {}", marketType, response);
-        } catch (Exception e) {
-            log.error("企业微信消息发送失败（市场: {}）: {}", marketType, e.getMessage(), e);
-            throw new RuntimeException("企业微信消息发送失败: " + e.getMessage(), e);
-        }
+    @Async("notificationExecutor")
+    public CompletableFuture<Boolean> sendMarkdownMessageAsync(String markdownContent, MarketType marketType) {
+        return CompletableFuture.completedFuture(sendMessage(markdownContent, "markdown", marketType));
     }
 
     /**
@@ -187,6 +172,11 @@ public class WeComApi {
         sendMarkdownMessage(markdownContent, MarketType.US);
     }
 
+    @Async("notificationExecutor")
+    public CompletableFuture<Boolean> sendMarkdownMessageAsync(String markdownContent) {
+        return sendMarkdownMessageAsync(markdownContent, MarketType.US);
+    }
+
     /**
      * @Description: 发送文本消息到企业微信（指定市场）
      * @Author dawei
@@ -194,32 +184,15 @@ public class WeComApi {
      * @param marketType 市场类型（美股、A股、港股）
      */
     public void sendTextMessage(String textContent, MarketType marketType) {
-        String webhookUrl = getWebhookUrl(marketType);
-        
-        if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
-            return;
+        boolean success = sendMessage(textContent, "text", marketType);
+        if (!success && hasWebhook(marketType)) {
+            throw new RuntimeException("企业微信消息发送失败");
         }
+    }
 
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            Map<String, Object> text = new HashMap<>();
-            text.put("content", textContent);
-
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("msgtype", "text");
-            requestBody.put("text", text);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            String response = restTemplate.postForObject(webhookUrl, request, String.class);
-            
-            log.info("企业微信消息发送成功（市场: {}），响应: {}", marketType, response);
-        } catch (Exception e) {
-            log.error("企业微信消息发送失败（市场: {}）: {}", marketType, e.getMessage(), e);
-            throw new RuntimeException("企业微信消息发送失败: " + e.getMessage(), e);
-        }
+    @Async("notificationExecutor")
+    public CompletableFuture<Boolean> sendTextMessageAsync(String textContent, MarketType marketType) {
+        return CompletableFuture.completedFuture(sendMessage(textContent, "text", marketType));
     }
 
     /**
@@ -229,6 +202,44 @@ public class WeComApi {
      */
     public void sendTextMessage(String textContent) {
         sendTextMessage(textContent, MarketType.US);
+    }
+
+    @Async("notificationExecutor")
+    public CompletableFuture<Boolean> sendTextMessageAsync(String textContent) {
+        return sendTextMessageAsync(textContent, MarketType.US);
+    }
+
+    private boolean sendMessage(String content, String messageType, MarketType marketType) {
+        String webhookUrl = getWebhookUrl(marketType);
+        if (webhookUrl == null || webhookUrl.isBlank()) {
+            log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
+            return false;
+        }
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> contentBody = new HashMap<>();
+            contentBody.put("content", content);
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("msgtype", messageType);
+            requestBody.put(messageType, contentBody);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+            String response = restTemplate.postForObject(webhookUrl, request, String.class);
+            log.info("企业微信消息发送成功（市场: {}，类型: {}），响应: {}", marketType, messageType, response);
+            return true;
+        } catch (Exception e) {
+            log.error("企业微信消息发送失败（市场: {}，类型: {}）: {}", marketType, messageType, e.getMessage(), e);
+            return false;
+        }
+    }
+
+    private boolean hasWebhook(MarketType marketType) {
+        String webhookUrl = getWebhookUrl(marketType);
+        return webhookUrl != null && !webhookUrl.isBlank();
     }
 
     // ============== A股相关方法 ==============

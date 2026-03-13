@@ -4,9 +4,9 @@ spring:
   datasource: # 数据源的相关配置
     type: com.zaxxer.hikari.HikariDataSource      # 数据源的类型
     driver-class-name: com.mysql.cj.jdbc.Driver   # mysql的数据库驱动类名称
-    url: jdbc:mysql://127.0.0.1:3307/us_stock_monitor_dev?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: root
-    password: 123456
+    url: ${A_STOCK_MCP_DB_URL}
+    username: ${A_STOCK_MCP_DB_USERNAME}
+    password: ${A_STOCK_MCP_DB_PASSWORD}
     hikari:
       pool-name: DataSourceHikariCP               # 连接池的名字
       connection-timeout: 30000                   # 等待连接池分配连接的最大时间（毫秒）

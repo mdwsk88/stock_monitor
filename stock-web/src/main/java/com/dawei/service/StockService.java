@@ -16,16 +16,12 @@ import java.util.List;
 public interface StockService {
 
     // ============== 美股相关方法 ==============
-    public void saveStockNews(USStockRss stockNews);
-
-    public Boolean isStockNewsExist(String stockCode, String link);
+    boolean saveStockNewsIfAbsent(USStockRss stockNews);
 
     public Long getStockUnusualCounts(USStockRss stockNews, LocalDateTime startDate, LocalDateTime endDate);
 
     // ============== A股相关方法 ==============
-    public void saveAStockNews(AStockRss aStockNews);
-
-    public Boolean isAStockNewsExist(String stockCode, String title, String pubDate);
+    boolean saveAStockNewsIfAbsent(AStockRss aStockNews);
 
     public Long getAStockNoticeCounts(String stockCode, LocalDateTime startDate, LocalDateTime endDate);
 

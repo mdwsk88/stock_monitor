@@ -1,5 +1,6 @@
 package com.dawei;
 
+import com.dawei.common.utils.DotenvLoader;
 import com.dawei.mcp.tool.AStockTool;
 import com.dawei.mcp.tool.WebFetchTool;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -11,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) {
+        DotenvLoader.loadToSystemProperties();
         SpringApplication.run(Application.class, args);
     }
 

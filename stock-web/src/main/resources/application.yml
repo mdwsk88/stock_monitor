@@ -2,7 +2,7 @@ spring:
   application:
     name: us-stock-monitor-web
   profiles:
-    active: prod
+    active: ${SPRING_PROFILES_ACTIVE:prod}
   ai:
     openai:
       api-key: ${OPENAI_API_KEY}
@@ -28,7 +28,7 @@ mybatis-plus:
 
 baidu:
   translate:
-    host: ${BAIDU_TRANSLATE_HOST}
+    host: ${BAIDU_TRANSLATE_HOST:https://fanyi-api.baidu.com/api/trans/vip/translate}
     appid: ${BAIDU_TRANSLATE_APPID}
     securityKey: ${BAIDU_TRANSLATE_SECURITYKEY}
 
