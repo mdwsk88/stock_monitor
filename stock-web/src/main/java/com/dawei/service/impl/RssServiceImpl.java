@@ -233,66 +233,70 @@ public class RssServiceImpl implements RssService {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
         for (JsonNode node : list) {
-            String stockCode = node.get("codes").get(0).get("stock_code").asText();
-            String stockName = node.get("codes").get(0).get("short_name").asText();
-            String title = node.get("title").asText();
-            String tag = node.get("columns").get(0).get("column_name").asText();
-            String displayTime = node.get("display_time").asText();
+            try {
+                String stockCode = node.get("codes").get(0).get("stock_code").asText();
+                String stockName = node.get("codes").get(0).get("short_name").asText();
+                String title = node.get("title").asText();
+                String tag = node.get("columns").get(0).get("column_name").asText();
+                String displayTime = node.get("display_time").asText();
 
-            // 处理时间格式：去掉毫秒部分（:673），只保留 yyyy-MM-dd HH:mm:ss
-            if (displayTime != null && displayTime.length() > 19) {
-                displayTime = displayTime.substring(0, 19);
+                // 处理时间格式：去掉毫秒部分（:673），只保留 yyyy-MM-dd HH:mm:ss
+                if (displayTime != null && displayTime.length() > 19) {
+                    displayTime = displayTime.substring(0, 19);
+                }
+
+                // 解析公告时间
+                LocalDateTime pubDate = LocalDateTime.parse(displayTime, formatter);
+
+                // 判断公告是否已存在
+                if (stockService.isAStockNewsExist(stockCode, title, displayTime)) {
+                    System.out.println("A股公告已存在，跳过：【" + stockCode + " - " + stockName + "】" + title);
+                    continue;
+                }
+
+                // 创建并保存A股公告
+                AStockRss aStockRss = new AStockRss();
+                aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
+                aStockRss.setStockCode(stockCode);
+                aStockRss.setStockName(stockName);
+                aStockRss.setTitle(title);
+                aStockRss.setTag(tag);
+                aStockRss.setPubDate(pubDate);
+                // 设置当前插入时间
+                aStockRss.setCreateTime(LocalDateTime.now());
+                // 东方财富公告链接
+                aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
+
+                stockService.saveAStockNews(aStockRss);
+
+                System.out.println("A股公告保存成功：" + aStockRss);
+
+                // 统计该股票在24小时、3天、1周内的公告次数
+                Long counts24Hour = stockService.getAStockNoticeCounts(stockCode,
+                        GMTDateConverter.minus24Hour(pubDate),
+                        GMTDateConverter.plus1Minute(pubDate));
+                Long counts3Day = stockService.getAStockNoticeCounts(stockCode,
+                        GMTDateConverter.minus3Day(pubDate),
+                        GMTDateConverter.plus1Minute(pubDate));
+                Long counts1Week = stockService.getAStockNoticeCounts(stockCode,
+                        GMTDateConverter.minus1Week(pubDate),
+                        GMTDateConverter.plus1Minute(pubDate));
+
+                // 添加到消息列表
+                AStockMsg aStockMsg = new AStockMsg();
+                aStockMsg.setStockCode(stockCode);
+                aStockMsg.setStockName(stockName);
+                aStockMsg.setTitle(title);
+                aStockMsg.setTag(tag);
+                aStockMsg.setPubDate(displayTime);
+                aStockMsg.setCounts24Hour(counts24Hour.intValue());
+                aStockMsg.setCounts3Day(counts3Day.intValue());
+                aStockMsg.setCounts1Week(counts1Week.intValue());
+
+                aStockMsgList.add(aStockMsg);
+            } catch (Exception e) {
+                log.error("【警告】解析单条A股公告失败，跳过。原因: {}", e.getMessage());
             }
-
-            // 解析公告时间
-            LocalDateTime pubDate = LocalDateTime.parse(displayTime, formatter);
-
-            // 判断公告是否已存在
-            if (stockService.isAStockNewsExist(stockCode, title, displayTime)) {
-                System.out.println("A股公告已存在，跳过：【" + stockCode + " - " + stockName + "】" + title);
-                continue;
-            }
-
-            // 创建并保存A股公告
-            AStockRss aStockRss = new AStockRss();
-            aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
-            aStockRss.setStockCode(stockCode);
-            aStockRss.setStockName(stockName);
-            aStockRss.setTitle(title);
-            aStockRss.setTag(tag);
-            aStockRss.setPubDate(pubDate);
-            // 设置当前插入时间
-            aStockRss.setCreateTime(LocalDateTime.now());
-            // 东方财富公告链接
-            aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
-
-            stockService.saveAStockNews(aStockRss);
-
-            System.out.println("A股公告保存成功：" + aStockRss);
-
-            // 统计该股票在24小时、3天、1周内的公告次数
-            Long counts24Hour = stockService.getAStockNoticeCounts(stockCode,
-                    GMTDateConverter.minus24Hour(pubDate),
-                    GMTDateConverter.plus1Minute(pubDate));
-            Long counts3Day = stockService.getAStockNoticeCounts(stockCode,
-                    GMTDateConverter.minus3Day(pubDate),
-                    GMTDateConverter.plus1Minute(pubDate));
-            Long counts1Week = stockService.getAStockNoticeCounts(stockCode,
-                    GMTDateConverter.minus1Week(pubDate),
-                    GMTDateConverter.plus1Minute(pubDate));
-
-            // 添加到消息列表
-            AStockMsg aStockMsg = new AStockMsg();
-            aStockMsg.setStockCode(stockCode);
-            aStockMsg.setStockName(stockName);
-            aStockMsg.setTitle(title);
-            aStockMsg.setTag(tag);
-            aStockMsg.setPubDate(displayTime);
-            aStockMsg.setCounts24Hour(counts24Hour.intValue());
-            aStockMsg.setCounts3Day(counts3Day.intValue());
-            aStockMsg.setCounts1Week(counts1Week.intValue());
-
-            aStockMsgList.add(aStockMsg);
         }
 
         // 发送消息通知

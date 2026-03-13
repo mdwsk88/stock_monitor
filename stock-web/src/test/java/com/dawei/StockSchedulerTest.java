@@ -10,8 +10,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.lang.reflect.Method;
-import java.time.DayOfWeek;
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
@@ -98,6 +96,21 @@ class StockSchedulerTest {
         log.info("✅ 美股低频任务 Cron 表达式验证通过: {}", cron);
     }
 
+    @Test
+    void testWeekendLowFreqCronExpression() throws NoSuchMethodException {
+        log.info("========== 测试 周末巡逻任务 Cron 表达式 ==========");
+
+        Method method = StockScheduler.class.getMethod("weekendLowFreqMonitor");
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+
+        assertNotNull(scheduled, "方法应该有 @Scheduled 注解");
+        String cron = scheduled.cron();
+        assertEquals("0 0 0/2 * * SAT,SUN", cron,
+            "周末巡逻任务应该在周六周日每 2 小时执行一次");
+
+        log.info("✅ 周末巡逻任务 Cron 表达式验证通过: {}", cron);
+    }
+
     // ==================== 任务执行测试 ====================
 
     @Test
@@ -156,6 +169,22 @@ class StockSchedulerTest {
         log.info("✅ 美股低频任务执行测试通过");
     }
 
+    @Test
+    void testWeekendLowFreqExecution() throws Exception {
+        log.info("========== 测试 周末巡逻任务执行 ==========");
+
+        doNothing().when(rssService).displayRss();
+        doNothing().when(rssService).fetchAndSaveAStockNotices();
+
+        assertDoesNotThrow(() -> stockScheduler.weekendLowFreqMonitor(),
+            "周末巡逻任务执行不应抛出异常");
+
+        verify(rssService, times(1)).displayRss();
+        verify(rssService, times(1)).fetchAndSaveAStockNotices();
+
+        log.info("✅ 周末巡逻任务执行测试通过");
+    }
+
     // ==================== Cron 表达式解析测试 ====================
 
     @Test
@@ -207,8 +236,8 @@ class StockSchedulerTest {
     }
 
     @Test
-    void testCronOnlyRunsOnWeekdays() throws NoSuchMethodException {
-        log.info("========== 测试 Cron 仅工作日执行 ==========");
+    void testWeekdayCronTasksOnlyRunOnWeekdays() throws NoSuchMethodException {
+        log.info("========== 测试工作日任务 Cron 仅工作日执行 ==========");
 
         String[] methods = {
             "getAStockInfoHighFreq",
@@ -226,7 +255,21 @@ class StockSchedulerTest {
                 methodName + " 应该只在工作日执行: " + cron);
         }
 
-        log.info("✅ 所有定时任务都配置为仅工作日执行");
+        log.info("✅ 工作日定时任务都配置为仅工作日执行");
+    }
+
+    @Test
+    void testWeekendMonitorOnlyRunsOnWeekends() throws NoSuchMethodException {
+        log.info("========== 测试周末巡逻任务仅周末执行 ==========");
+
+        Method method = StockScheduler.class.getMethod("weekendLowFreqMonitor");
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+        String cron = scheduled.cron();
+
+        assertTrue(cron.contains("SAT,SUN"),
+            "周末巡逻任务应该只在周末执行: " + cron);
+
+        log.info("✅ 周末巡逻任务配置为仅周末执行");
     }
 
     // ==================== 异常处理测试 ====================
@@ -270,7 +313,8 @@ class StockSchedulerTest {
             "getAStockInfoHighFreq",
             "getAStockInfoLowFreq",
             "getUSStockInfoHighFreq",
-            "getUSStockInfoLowFreq"
+            "getUSStockInfoLowFreq",
+            "weekendLowFreqMonitor"
         };
 
         for (String methodName : expectedMethods) {
