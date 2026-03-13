@@ -12,6 +12,113 @@
         <result column="tag" property="tag" />
         <result column="link" property="link" />
         <result column="pub_date" property="pubDate" />
+        <result column="create_time" property="createTime" />
     </resultMap>
+
+    <resultMap id="AggregateResultMap" type="com.dawei.entity.AStockRssAggregate" extends="BaseResultMap">
+        <result column="frequency" property="frequency" />
+    </resultMap>
+
+    <insert id="insertIgnore" parameterType="com.dawei.entity.AStockRss">
+        INSERT IGNORE INTO a_stock_rss (
+            id,
+            stock_code,
+            stock_name,
+            title,
+            tag,
+            link,
+            pub_date,
+            create_time
+        ) VALUES (
+            #{id},
+            #{stockCode},
+            #{stockName},
+            #{title},
+            #{tag},
+            #{link},
+            #{pubDate},
+            #{createTime}
+        )
+    </insert>
+
+    <select id="selectTopStocksByFrequency" resultMap="AggregateResultMap">
+        WITH filtered AS (
+            SELECT
+                id,
+                stock_code,
+                stock_name,
+                title,
+                tag,
+                link,
+                pub_date,
+                create_time
+            FROM
+                a_stock_rss
+            WHERE
+                pub_date &gt;= #{startTime}
+                AND pub_date &lt;= #{endTime}
+            <if test="blacklistKeywords != null and blacklistKeywords.size() &gt; 0">
+                <foreach collection="blacklistKeywords" item="kw">
+                    AND (title IS NULL OR title NOT LIKE CONCAT('%', #{kw}, '%'))
+                </foreach>
+            </if>
+        ),
+        ranked AS (
+            SELECT
+                filtered.*,
+                COUNT(*) OVER (PARTITION BY stock_code) AS frequency,
+                ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY pub_date DESC, id DESC) AS rn
+            FROM
+                filtered
+        )
+        SELECT
+            id,
+            stock_code,
+            stock_name,
+            title,
+            tag,
+            link,
+            pub_date,
+            create_time,
+            frequency
+        FROM
+            ranked
+        WHERE
+            rn = 1
+            AND frequency &gt;= #{threshold}
+        ORDER BY
+            frequency DESC,
+            pub_date DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectFilteredByStockCodes" resultMap="BaseResultMap">
+        SELECT
+            id,
+            stock_code,
+            stock_name,
+            title,
+            tag,
+            link,
+            pub_date,
+            create_time
+        FROM
+            a_stock_rss
+        WHERE
+            stock_code IN
+            <foreach collection="stockCodes" item="stockCode" open="(" separator="," close=")">
+                #{stockCode}
+            </foreach>
+            AND pub_date &gt;= #{startTime}
+            AND pub_date &lt;= #{endTime}
+        <if test="blacklistKeywords != null and blacklistKeywords.size() &gt; 0">
+            <foreach collection="blacklistKeywords" item="kw">
+                AND (title IS NULL OR title NOT LIKE CONCAT('%', #{kw}, '%'))
+            </foreach>
+        </if>
+        ORDER BY
+            stock_code ASC,
+            pub_date DESC
+    </select>
 
 </mapper>

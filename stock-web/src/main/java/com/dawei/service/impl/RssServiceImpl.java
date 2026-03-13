@@ -86,12 +86,6 @@ public class RssServiceImpl implements RssService {
                 String stockCode = getStockCode(title);
                 stockNews.setStockCode(stockCode);
 
-                // 判断股票异动信息是否已存在，如果存在则不进行保存的操作
-                if (stockService.isStockNewsExist(stockCode, stockNews.getLink())) {
-                    log.info("股票代码为【{}】的已存在，跳过。。。", stockCode);
-                    continue;
-                }
-
                 // 【优化】不再调用百度翻译 API，直接存储英文标题
                 // 后续使用大模型进行翻译和总结，降低成本
                 stockNews.setTitleZh(titleEn);
@@ -107,7 +101,10 @@ public class RssServiceImpl implements RssService {
                 }
 
                 log.info("美股新闻: {}", stockNews);
-                stockService.saveStockNews(stockNews);
+                if (!stockService.saveStockNewsIfAbsent(stockNews)) {
+                    log.info("股票代码为【{}】的已存在，跳过。。。", stockCode);
+                    continue;
+                }
 
                 USStockMsg stockMsg = new USStockMsg();
                 BeanUtils.copyProperties(stockNews, stockMsg);
@@ -137,7 +134,7 @@ public class RssServiceImpl implements RssService {
 
         if (!stockMsgList.isEmpty()) {
             //dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
-            weComApi.sendMarkdownMessage(weComApi.formatStockInfoFromList(stockMsgList), WeComApi.MarketType.US);
+            weComApi.sendMarkdownMessageAsync(weComApi.formatStockInfoFromList(stockMsgList), WeComApi.MarketType.US);
             //weComApi.sendTextMessage(weComApi.formatStockInfoTextFromList(stockMsgList), WeComApi.MarketType.US);
         }
 
@@ -248,12 +245,6 @@ public class RssServiceImpl implements RssService {
                 // 解析公告时间
                 LocalDateTime pubDate = LocalDateTime.parse(displayTime, formatter);
 
-                // 判断公告是否已存在
-                if (stockService.isAStockNewsExist(stockCode, title, displayTime)) {
-                    System.out.println("A股公告已存在，跳过：【" + stockCode + " - " + stockName + "】" + title);
-                    continue;
-                }
-
                 // 创建并保存A股公告
                 AStockRss aStockRss = new AStockRss();
                 aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
@@ -267,9 +258,12 @@ public class RssServiceImpl implements RssService {
                 // 东方财富公告链接
                 aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
 
-                stockService.saveAStockNews(aStockRss);
+                if (!stockService.saveAStockNewsIfAbsent(aStockRss)) {
+                    log.info("A股公告已存在，跳过：【{} - {}】{}", stockCode, stockName, title);
+                    continue;
+                }
 
-                System.out.println("A股公告保存成功：" + aStockRss);
+                log.info("A股公告保存成功：{}", aStockRss);
 
                 // 统计该股票在24小时、3天、1周内的公告次数
                 Long counts24Hour = stockService.getAStockNoticeCounts(stockCode,
@@ -301,7 +295,7 @@ public class RssServiceImpl implements RssService {
 
         // 发送消息通知
         if (!aStockMsgList.isEmpty()) {
-            weComApi.sendMarkdownMessage(weComApi.formatAStockInfoFromList(aStockMsgList), WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(weComApi.formatAStockInfoFromList(aStockMsgList), WeComApi.MarketType.A);
         }
     }
 
