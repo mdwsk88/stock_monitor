@@ -1,4 +1,4 @@
-package com.dawei.utils;
+package com.dawei.common.utils;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -6,10 +6,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * MD5编码相关的类
+ * MD5编码相关的类 - 公共模块
  *
  * @author dawei
- *
  */
 public class MD5 {
     // 首先初始化一个字符数组，用来存放每个16进制字符
@@ -21,14 +20,13 @@ public class MD5 {
      *
      * @param input 输入的字符串
      * @return 输入字符串的MD5值
-     *
      */
     public static String md5(String input) {
         if (input == null)
             return null;
 
         try {
-            // 拿到一个MD5转换器（如果想要SHA1参数换成”SHA1”）
+            // 拿到一个MD5转换器
             MessageDigest messageDigest = MessageDigest.getInstance("MD5");
             // 输入的字符串转换成字节数组
             byte[] inputByteArray = input.getBytes(StandardCharsets.UTF_8);
@@ -46,8 +44,8 @@ public class MD5 {
     /**
      * 获取文件的MD5值
      *
-     * @param file
-     * @return
+     * @param file 文件
+     * @return MD5值
      */
     public static String md5(File file) {
         try {
@@ -56,13 +54,9 @@ public class MD5 {
                 return null;
             }
 
-            FileInputStream in = new FileInputStream(file);
-
-            String result = md5(in);
-
-            in.close();
-
-            return result;
+            try (FileInputStream in = new FileInputStream(file)) {
+                return md5(in);
+            }
 
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -74,7 +68,6 @@ public class MD5 {
     }
 
     public static String md5(InputStream in) {
-
         try {
             MessageDigest messagedigest = MessageDigest.getInstance("MD5");
 
@@ -86,14 +79,8 @@ public class MD5 {
 
             in.close();
 
-            String result = byteArrayToHex(messagedigest.digest());
-
-            return result;
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
+            return byteArrayToHex(messagedigest.digest());
+        } catch (NoSuchAlgorithmException | IOException e) {
             e.printStackTrace();
         }
 
@@ -101,9 +88,9 @@ public class MD5 {
     }
 
     private static String byteArrayToHex(byte[] byteArray) {
-        // new一个字符数组，这个就是用来组成结果字符串的（解释一下：一个byte是八位二进制，也就是2位十六进制字符（2的8次方等于16的2次方））
+        // new一个字符数组，这个就是用来组成结果字符串的（一个byte是八位二进制，也就是2位十六进制字符）
         char[] resultCharArray = new char[byteArray.length * 2];
-        // 遍历字节数组，通过位运算（位运算效率高），转换成字符放到字符数组中去
+        // 遍历字节数组，通过位运算，转换成字符放到字符数组中去
         int index = 0;
         for (byte b : byteArray) {
             resultCharArray[index++] = hexDigits[b >>> 4 & 0xf];
@@ -112,8 +99,5 @@ public class MD5 {
 
         // 字符数组组合成字符串返回
         return new String(resultCharArray);
-
     }
-
 }
-

@@ -10,6 +10,7 @@
 
     <packaging>pom</packaging>
     <modules>
+        <module>stock-common</module>
         <module>stock-web</module>
         <module>us-stock-mcp</module>
         <module>a-stock-mcp</module>

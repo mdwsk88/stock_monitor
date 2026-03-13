@@ -1,22 +1,24 @@
 package com.dawei.service.impl;
 
-import cn.hutool.json.JSONUtil;
 import com.dawei.entity.*;
 import com.dawei.enums.StockTag;
 import com.dawei.service.RssService;
 import com.dawei.service.StockService;
+import com.dawei.common.utils.GMTDateConverter;
 import com.dawei.utils.*;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 import jakarta.annotation.Resource;
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -28,20 +30,19 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 @Service
+@Slf4j
 public class RssServiceImpl implements RssService {
     @Resource
     private StockService stockService;
-
-
-
-    @Resource
-    private TransApi transApi;
 
     @Resource
     private DingTalkApi dingTalkApi;
 
     @Resource
     private WeComApi weComApi;
+
+    @Resource
+    private RestTemplate restTemplate;
 
 
     public static final String RSS_URL = "https://www.stocktitan.net/rss";
@@ -64,86 +65,74 @@ public class RssServiceImpl implements RssService {
         }
 
         for (SyndEntry entry : syndEntryList) {
-            USStockRss stockNews = new USStockRss();
+            try {
+                USStockRss stockNews = new USStockRss();
 
-            // 获得股票异动信息的标题
-            String title = entry.getTitle();
-            String titleEn = getStockTitle(title);
-            stockNews.setTitle(titleEn);
+                // 获得股票异动信息的标题
+                String title = entry.getTitle();
+                String titleEn = getStockTitle(title);
+                stockNews.setTitle(titleEn);
 
-            // 获得股票异动信息的链接地址
-            stockNews.setLink(entry.getLink());
+                // 获得股票异动信息的链接地址
+                stockNews.setLink(entry.getLink());
 
-            // 获得股票异动信息的发布时间（GMT时间和北京时间）
-            Date gmtDateTemp = entry.getPublishedDate();
-            LocalDateTime gmtDate = GMTDateConverter.convertGmt(gmtDateTemp);
-            stockNews.setPubDateGmt(gmtDate);
-            stockNews.setPubDateBj(GMTDateConverter.convertGmtToBeijing(gmtDateTemp));
+                // 获得股票异动信息的发布时间（GMT时间和北京时间）
+                Date gmtDateTemp = entry.getPublishedDate();
+                LocalDateTime gmtDate = GMTDateConverter.convertGmt(gmtDateTemp);
+                stockNews.setPubDateGmt(gmtDate);
+                stockNews.setPubDateBj(GMTDateConverter.convertGmtToBeijing(gmtDateTemp));
 
-            // 获得股票异动信息的股票代码
-            String stockCode = getStockCode(title);
-            stockNews.setStockCode(stockCode);
+                // 获得股票异动信息的股票代码
+                String stockCode = getStockCode(title);
+                stockNews.setStockCode(stockCode);
 
-//            transApi.testEnv();
-
-            // 判断股票异动信息是否已存在，如果存在则不进行保存的操作
-            if (stockService.isStockNewsExist(stockCode, stockNews.getLink())) {
-                System.out.println("股票代码为【" + stockCode + "】的已存在，跳过。。。");
-                continue;
-            }
-
-
-            // 使用百度翻译SDK调用其API对英文标题进行翻译（翻译为中文）
-            String finalTitleZh = "";
-
-            String result = transApi.getTransResult(titleEn, "en", "zh");
-//            System.out.println("百度翻译调用的结果 result为： " +  result);
-            BaiduTransEntity transEntity = JSONUtil.toBean(result, BaiduTransEntity.class);
-            if (transEntity != null) {
-                List<BaiduTransEntity.TransResult> transResultList = transEntity.getTrans_result();
-                if (transResultList == null || transResultList.isEmpty() || transResultList.size() <= 0) {
+                // 判断股票异动信息是否已存在，如果存在则不进行保存的操作
+                if (stockService.isStockNewsExist(stockCode, stockNews.getLink())) {
+                    log.info("股票代码为【{}】的已存在，跳过。。。", stockCode);
                     continue;
                 }
-                finalTitleZh = transResultList.get(0).getDst();
-            }
 
-            // 处理股票标题，翻译为中文
-            stockNews.setTitleZh(finalTitleZh);
+                // 【优化】不再调用百度翻译 API，直接存储英文标题
+                // 后续使用大模型进行翻译和总结，降低成本
+                stockNews.setTitleZh(titleEn);
 
-            // 获得股票异动信息的标签
-            try {
-                List<String> tagsList = StockTitanCrawler.getTags(titleEn);
-                stockNews.setTags(getTagsZh(tagsList));
+                // 获得股票异动信息的标签
+                try {
+                    List<String> tagsList = StockTitanCrawler.getTags(titleEn);
+                    stockNews.setTags(getTagsZh(tagsList));
+                } catch (Exception e) {
+                    // 此处因为频繁访问页面抓取数据，可能导致429的反爬虫异常，无需处理，tags无所谓，可以直接设为空值
+                    log.warn("获取标签失败，股票代码: {}, 原因: {}", stockCode, e.getMessage());
+                    stockNews.setTags("");
+                }
+
+                log.info("美股新闻: {}", stockNews);
+                stockService.saveStockNews(stockNews);
+
+                USStockMsg stockMsg = new USStockMsg();
+                BeanUtils.copyProperties(stockNews, stockMsg);
+
+                stockMsg.setPubDateBj(GMTDateConverter.getBeijingTime(gmtDateTemp));
+
+                Long counts24Hour = stockService.getStockUnusualCounts(stockNews,
+                        GMTDateConverter.minus24Hour(gmtDate),
+                        GMTDateConverter.plus1Minute(gmtDate));
+                Long counts3Day = stockService.getStockUnusualCounts(stockNews,
+                        GMTDateConverter.minus3Day(gmtDate),
+                        GMTDateConverter.plus1Minute(gmtDate));
+                Long counts1Week = stockService.getStockUnusualCounts(stockNews,
+                        GMTDateConverter.minus1Week(gmtDate),
+                        GMTDateConverter.plus1Minute(gmtDate));
+                stockMsg.setCounts24Hour(counts24Hour.intValue());
+                stockMsg.setCounts3Day(counts3Day.intValue());
+                stockMsg.setCounts1Week(counts1Week.intValue());
+
+                log.info("美股消息: {}", stockMsg);
+                stockMsgList.add(stockMsg);
             } catch (Exception e) {
-//                throw new RuntimeException(e);
-                // 此处因为频繁访问页面抓取数据，可能导致429的反爬虫异常，无需处理，tags无所谓，可以直接设为空值
-                stockNews.setTags("");
+                log.error("处理美股单条新闻失败，标题: {}, 原因: {}", entry.getTitle(), e.getMessage(), e);
+                // continue 保证不影响下一条新闻的处理
             }
-
-            System.out.println(stockNews.toString());
-            stockService.saveStockNews(stockNews);
-
-
-            USStockMsg stockMsg = new USStockMsg();
-            BeanUtils.copyProperties(stockNews, stockMsg);
-
-            stockMsg.setPubDateBj(GMTDateConverter.getBeijingTime(gmtDateTemp));
-
-            Long counts24Hour = stockService.getStockUnusualCounts(stockNews,
-                    GMTDateConverter.minus24Hour(gmtDate),
-                    GMTDateConverter.plus1Minute(gmtDate));
-            Long counts3Day = stockService.getStockUnusualCounts(stockNews,
-                    GMTDateConverter.minus3Day(gmtDate),
-                    GMTDateConverter.plus1Minute(gmtDate));
-            Long counts1Week = stockService.getStockUnusualCounts(stockNews,
-                    GMTDateConverter.minus1Week(gmtDate),
-                    GMTDateConverter.plus1Minute(gmtDate));
-            stockMsg.setCounts24Hour(counts24Hour.intValue());
-            stockMsg.setCounts3Day(counts3Day.intValue());
-            stockMsg.setCounts1Week(counts1Week.intValue());
-
-            System.out.println(stockMsg.toString());
-            stockMsgList.add(stockMsg);
         }
 
         if (!stockMsgList.isEmpty()) {
@@ -225,15 +214,15 @@ public class RssServiceImpl implements RssService {
     public void fetchAndSaveAStockNotices() throws Exception {
         List<AStockMsg> aStockMsgList = new ArrayList<>();
 
-        CloseableHttpClient httpClient = HttpClients.createDefault();
-        HttpGet httpGet = new HttpGet(A_STOCK_NOTICE_URL);
+        // 【优化】使用注入的 RestTemplate，避免 HTTP 连接泄漏
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("User-Agent", "Mozilla/5.0");
+        headers.set("Accept", "application/json");
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        // 模拟浏览器（很重要）
-        httpGet.setHeader("User-Agent", "Mozilla/5.0");
-        httpGet.setHeader("Accept", "application/json");
-
-        String json = httpClient.execute(httpGet,
-                response -> EntityUtils.toString(response.getEntity(), "UTF-8"));
+        ResponseEntity<String> response = restTemplate.exchange(
+                A_STOCK_NOTICE_URL, HttpMethod.GET, entity, String.class);
+        String json = response.getBody();
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode root = mapper.readTree(json);

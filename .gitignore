@@ -37,3 +37,14 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Environment Variables ###
+.env
+*.env
+!.env.example
+
+### Application Properties (with secrets) ###
+application-local.yml
+application-dev.yml
+application-prod.yml
+*.properties.local

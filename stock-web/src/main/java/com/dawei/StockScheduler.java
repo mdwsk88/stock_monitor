@@ -3,6 +3,7 @@ package com.dawei;
 
 import com.dawei.service.RssService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -13,10 +14,17 @@ import java.time.LocalDateTime;
  * @ClassName StockScheduler
  * @Author dawei
  * @Version 1.0
- * @Description StockScheduler
+ * @Description 股票定时任务调度器 - 按交易时段动态调整频率
+ * 
+ * 【优化说明】
+ * 1. A股高频期：工作日 9:00-22:00（交易时段+晚间公告高发期），每5分钟一次
+ * 2. A股低频期：夜间及周末，每小时一次兜底
+ * 3. 美股高频期：工作日 21:30-次日6:00（美股交易时段，夏令时），每30分钟一次
+ * 4. 美股低频期：非交易时段，每小时一次兜底
  **/
 @Component
 @EnableScheduling
+@Slf4j
 public class StockScheduler {
 
     @Resource
@@ -35,24 +43,53 @@ public class StockScheduler {
 
     // ============== 美股定时任务 ==============
 
-    // 定时任务，定时抓取美股数据信息
-    //@Scheduled(cron = "0 */30 * * * ?")
-    @Scheduled(initialDelay = 30 * 1000, fixedDelay = 30 * 60 * 1000)
-    public void getUSStockInfo() throws Exception {
-        System.out.println("【美股】每隔一段时间运行..." + LocalDateTime.now());
+    /**
+     * 美股高频抓取：工作日晚间 21:30-06:00（覆盖美股交易时段）
+     * 夏令时美股交易时间：21:30-次日04:00（北京时间）
+     * 冬令时美股交易时间：22:30-次日05:00（北京时间）
+     * 每30分钟抓取一次，确保及时获取异动新闻
+     */
+    @Scheduled(cron = "0 0/30 21-23,0-6 * * MON-FRI")
+    public void getUSStockInfoHighFreq() throws Exception {
+        log.info("【美股高频】开始抓取美股数据... {}", LocalDateTime.now());
         rssService.displayRss();
-        System.out.println("【美股】定时任务执行结束=======================");
+        log.info("【美股高频】定时任务执行结束=======================");
+    }
+
+    /**
+     * 美股低频兜底：工作日白天时段，每小时检查一次
+     * 覆盖时间：06:00-21:30
+     */
+    @Scheduled(cron = "0 0 6-21 * * MON-FRI")
+    public void getUSStockInfoLowFreq() throws Exception {
+        log.info("【美股低频】开始抓取美股数据... {}", LocalDateTime.now());
+        rssService.displayRss();
+        log.info("【美股低频】定时任务执行结束=======================");
     }
 
     // ============== A股定时任务 ==============
 
-    // 定时任务，定时抓取A股公告信息
-    // A股交易时间：周一至周五 9:30-11:30, 13:00-15:00
-    @Scheduled(initialDelay = 0, fixedDelay = 5 * 60 * 1000)
-    public void getAStockInfo() throws Exception {
-        System.out.println("【A股】每隔一段时间运行..." + LocalDateTime.now());
+    /**
+     * A股高频抓取：工作日 9:00-22:00
+     * 覆盖交易时段（9:30-11:30, 13:00-15:00）和晚间公告高发期
+     * 每5分钟抓取一次，确保及时获取公告信息
+     */
+    @Scheduled(cron = "0 0/5 9-22 * * MON-FRI")
+    public void getAStockInfoHighFreq() throws Exception {
+        log.info("【A股高频】开始抓取A股公告... {}", LocalDateTime.now());
         rssService.fetchAndSaveAStockNotices();
-        System.out.println("【A股】定时任务执行结束=======================");
+        log.info("【A股高频】定时任务执行结束=======================");
+    }
+
+    /**
+     * A股低频兜底：工作日夜间及凌晨时段，每小时检查一次
+     * 覆盖时间：23:00-次日8:00
+     */
+    @Scheduled(cron = "0 0 23,0,1,2,3,4,5,6,7,8 * * MON-FRI")
+    public void getAStockInfoLowFreq() throws Exception {
+        log.info("【A股低频】开始抓取A股公告... {}", LocalDateTime.now());
+        rssService.fetchAndSaveAStockNotices();
+        log.info("【A股低频】定时任务执行结束=======================");
     }
 
 }
