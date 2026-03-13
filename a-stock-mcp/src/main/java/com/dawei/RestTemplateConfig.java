@@ -8,7 +8,7 @@ import org.springframework.web.client.RestTemplate;
  * @ClassName RestTemplateConfig
  * @Author dawei
  * @Version 1.0
- * @Description RestTemplateConfig
+ * @Description RestTemplate配置类，统一管理HTTP客户端连接池
  **/
 @Configuration
 public class RestTemplateConfig {

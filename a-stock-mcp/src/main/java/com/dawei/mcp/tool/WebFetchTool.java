@@ -1,6 +1,7 @@
 package com.dawei.mcp.tool;
 
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -28,11 +29,12 @@ import java.net.URISyntaxException;
 @Slf4j
 public class WebFetchTool {
 
-    private final RestTemplate restTemplate;
+    @Resource
+    private RestTemplate restTemplate;
+
     private final FlexmarkHtmlConverter htmlConverter;
 
     public WebFetchTool() {
-        this.restTemplate = new RestTemplate();
         this.htmlConverter = FlexmarkHtmlConverter.builder().build();
     }
 
