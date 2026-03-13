@@ -169,6 +169,47 @@ class RssServiceImplTest {
         log.info("✅ A股公告去重测试通过");
     }
 
+    @Test
+    void testFetchAndSaveAStockNotices_ContinuesWhenSingleItemIsDirty() throws Exception {
+        log.info("========== 测试 A股单条脏数据不影响后续处理 ==========");
+
+        String mockJson = "{" +
+            "\"data\": {" +
+                "\"list\": [" +
+                    "{" +
+                        "\"codes\": []," +
+                        "\"title\": \"脏数据公告\"," +
+                        "\"columns\": []," +
+                        "\"display_time\": \"2026-03-13 09:00:00:000\"," +
+                        "\"art_code\": \"ANN_BAD\"" +
+                    "}," +
+                    "{" +
+                        "\"codes\": [{\"stock_code\": \"000001\", \"short_name\": \"平安银行\"}]," +
+                        "\"title\": \"正常公告\"," +
+                        "\"columns\": [{\"column_name\": \"重大事项\"}]," +
+                        "\"display_time\": \"2026-03-13 10:30:00:000\"," +
+                        "\"art_code\": \"ANN_GOOD\"" +
+                    "}" +
+                "]" +
+            "}" +
+        "}";
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
+            .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
+        when(stockService.isAStockNewsExist(anyString(), anyString(), anyString())).thenReturn(false);
+        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
+        doNothing().when(weComApi).sendMarkdownMessage(any(), any(WeComApi.MarketType.class));
+
+        assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices(),
+            "单条脏数据不应导致整批A股公告处理失败");
+
+        verify(stockService, times(1)).saveAStockNews(any(AStockRss.class));
+        verify(stockService, times(1)).isAStockNewsExist(eq("000001"), eq("正常公告"), eq("2026-03-13 10:30:00"));
+        verify(weComApi, times(1)).sendMarkdownMessage(any(), eq(WeComApi.MarketType.A));
+
+        log.info("✅ A股单条脏数据隔离测试通过");
+    }
+
     // ==================== 美股 RSS 抓取测试 ====================
 
     @Test

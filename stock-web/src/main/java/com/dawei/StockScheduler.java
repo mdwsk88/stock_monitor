@@ -18,9 +18,10 @@ import java.time.LocalDateTime;
  * 
  * 【优化说明】
  * 1. A股高频期：工作日 9:00-22:00（交易时段+晚间公告高发期），每5分钟一次
- * 2. A股低频期：夜间及周末，每小时一次兜底
+ * 2. A股低频期：工作日夜间，每小时一次兜底
  * 3. 美股高频期：工作日 21:30-次日6:00（美股交易时段，夏令时），每30分钟一次
- * 4. 美股低频期：非交易时段，每小时一次兜底
+ * 4. 美股低频期：工作日非交易时段，每小时一次兜底
+ * 5. 周末巡逻：周六、周日每两小时补扫一次，避免遗漏重磅公告和政策
  **/
 @Component
 @EnableScheduling
@@ -90,6 +91,17 @@ public class StockScheduler {
         log.info("【A股低频】开始抓取A股公告... {}", LocalDateTime.now());
         rssService.fetchAndSaveAStockNotices();
         log.info("【A股低频】定时任务执行结束=======================");
+    }
+
+    /**
+     * 周末低频巡逻：周六、周日每两小时查一次，防止错过周末重磅突发消息
+     */
+    @Scheduled(cron = "0 0 0/2 * * SAT,SUN")
+    public void weekendLowFreqMonitor() throws Exception {
+        log.info("【周末巡逻】开始扫描周末积压消息... {}", LocalDateTime.now());
+        rssService.displayRss();
+        rssService.fetchAndSaveAStockNotices();
+        log.info("【周末巡逻】定时任务执行结束=======================");
     }
 
 }
