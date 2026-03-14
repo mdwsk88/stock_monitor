@@ -3,18 +3,34 @@ spring:
     name: us-stock-monitor-web
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:prod}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY}
-      base-url: ${OPENAI_BASE_URL}
+      api-key: ${STOCK_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+      base-url: ${STOCK_OPENAI_BASE_URL:${OPENAI_BASE_URL:https://api.openai.com}}
       chat:
         options:
-          model: ${OPENAI_CHAT_MODEL}
+          model: ${STOCK_OPENAI_CHAT_MODEL:${OPENAI_CHAT_MODEL:gpt-4o-mini}}
           temperature: 0.7
 
 logging:
   level:
     root: info
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
 
 
 # MyBatisPlus 的配置
