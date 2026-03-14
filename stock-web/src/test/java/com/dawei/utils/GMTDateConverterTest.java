@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,7 +32,7 @@ class GMTDateConverterTest {
 
         // 北京时间 = GMT + 8小时
         // 验证转换后的时间合理（与当前时间相差不超过1分钟）
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         assertTrue(Math.abs(beijingTime.getHour() - now.getHour()) <= 1 ||
                    Math.abs(beijingTime.getHour() - now.getHour()) >= 23,
             "北京时间应该接近当前时间");
