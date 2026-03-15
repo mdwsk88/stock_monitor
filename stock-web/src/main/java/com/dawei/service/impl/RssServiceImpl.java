@@ -13,6 +13,7 @@ import com.rometools.rome.io.XmlReader;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -29,9 +30,13 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+
 @Service
 @Slf4j
 public class RssServiceImpl implements RssService {
+    @Value("${stock.push.us-enabled:false}")
+    private boolean usPushEnabled;
+
     @Resource
     private StockService stockService;
 
@@ -44,8 +49,13 @@ public class RssServiceImpl implements RssService {
     @Resource
     private RestTemplate restTemplate;
 
+    @Resource
+    private AStockSignalService aStockSignalService;
 
     public static final String RSS_URL = "https://www.stocktitan.net/rss";
+    public static final String A_STOCK_NOTICE_URL = "https://np-anotice-stock.eastmoney.com/api/security/ann";
+    private static final String A_STOCK_NOTICE_QUERY = "?sr=-1&page_size=100&ann_type=SHA,CYB,SZA,BJA,INV&client_source=web&f_node=3,5,6&s_node=0";
+    private static final DateTimeFormatter A_STOCK_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
 
 
@@ -132,10 +142,12 @@ public class RssServiceImpl implements RssService {
             }
         }
 
-        if (!stockMsgList.isEmpty()) {
+        if (!stockMsgList.isEmpty() && usPushEnabled) {
             //dingTalkApi.sendTextMessage(dingTalkApi.formatStockInfoFromList(stockMsgList));
             weComApi.sendMarkdownMessageAsync(weComApi.formatStockInfoFromList(stockMsgList), WeComApi.MarketType.US);
             //weComApi.sendTextMessage(weComApi.formatStockInfoTextFromList(stockMsgList), WeComApi.MarketType.US);
+        } else if (!stockMsgList.isEmpty()) {
+            log.info("美股实时推送已关闭，跳过发送 {} 条美股异动消息", stockMsgList.size());
         }
 
     }
@@ -200,103 +212,165 @@ public class RssServiceImpl implements RssService {
 
     // ============== A股相关方法 ==============
 
-    /**
-     * A股公告API地址
-     * 原地址：https://data.eastmoney.com/notices/hsa/7.html
-     */
-    public static final String A_STOCK_NOTICE_URL = "https://np-anotice-stock.eastmoney.com/api/security/ann" +
-            "?sr=-1&page_size=100&page_index=1&ann_type=SHA,CYB,SZA,BJA,INV&client_source=web&f_node=3,5,6&s_node=0";
-
     @Override
     public void fetchAndSaveAStockNotices() throws Exception {
         List<AStockMsg> aStockMsgList = new ArrayList<>();
 
-        // 【优化】使用注入的 RestTemplate，避免 HTTP 连接泄漏
         HttpHeaders headers = new HttpHeaders();
         headers.set("User-Agent", "Mozilla/5.0");
         headers.set("Accept", "application/json");
         HttpEntity<String> entity = new HttpEntity<>(headers);
-
-        ResponseEntity<String> response = restTemplate.exchange(
-                A_STOCK_NOTICE_URL, HttpMethod.GET, entity, String.class);
-        String json = response.getBody();
-
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(json);
 
-        JsonNode list = root.path("data").path("list");
+        for (int pageIndex = 1; pageIndex <= aStockSignalService.getFetchPageCount(); pageIndex++) {
+            String requestUrl = buildAStockNoticeUrl(pageIndex);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    requestUrl, HttpMethod.GET, entity, String.class);
+            String json = response.getBody();
 
-        // displayTime 格式：2026-02-14 21:23:18:673 (冒号分隔的毫秒)
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            JsonNode root = mapper.readTree(json);
+            JsonNode list = root.path("data").path("list");
 
-        for (JsonNode node : list) {
-            try {
-                String stockCode = node.get("codes").get(0).get("stock_code").asText();
-                String stockName = node.get("codes").get(0).get("short_name").asText();
-                String title = node.get("title").asText();
-                String tag = node.get("columns").get(0).get("column_name").asText();
-                String displayTime = node.get("display_time").asText();
+            if (!list.isArray() || list.isEmpty()) {
+                log.info("A股公告第 [{}] 页为空，结束回扫", pageIndex);
+                break;
+            }
 
-                // 处理时间格式：去掉毫秒部分（:673），只保留 yyyy-MM-dd HH:mm:ss
-                if (displayTime != null && displayTime.length() > 19) {
-                    displayTime = displayTime.substring(0, 19);
+            for (JsonNode node : list) {
+                try {
+                    AStockRss aStockRss = buildAStockNotice(node);
+                    if (aStockRss == null) {
+                        continue;
+                    }
+                    if (!aStockSignalService.enrichNotice(aStockRss)) {
+                        log.debug("A股公告命中硬过滤，跳过：【{} - {}】{}", aStockRss.getStockCode(), aStockRss.getStockName(), aStockRss.getTitle());
+                        continue;
+                    }
+                    if (!stockService.saveAStockNewsIfAbsent(aStockRss)) {
+                        log.info("A股公告已存在，跳过：【{} - {}】{}", aStockRss.getStockCode(), aStockRss.getStockName(), aStockRss.getTitle());
+                        continue;
+                    }
+
+                    log.info("A股公告保存成功：{}", aStockRss);
+
+                    if (!aStockSignalService.isRealtimeAlert(aStockRss)) {
+                        continue;
+                    }
+
+                    Long counts24Hour = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
+                            GMTDateConverter.minus24Hour(aStockRss.getPubDate()),
+                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
+                    Long counts3Day = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
+                            GMTDateConverter.minus3Day(aStockRss.getPubDate()),
+                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
+                    Long counts1Week = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
+                            GMTDateConverter.minus1Week(aStockRss.getPubDate()),
+                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
+
+                    AStockMsg aStockMsg = new AStockMsg();
+                    aStockMsg.setStockCode(aStockRss.getStockCode());
+                    aStockMsg.setStockName(aStockRss.getStockName());
+                    aStockMsg.setTitle(aStockRss.getTitle());
+                    aStockMsg.setTag(aStockRss.getTag());
+                    aStockMsg.setPubDate(aStockRss.getPubDate().format(A_STOCK_TIME_FORMATTER));
+                    aStockMsg.setEventType(aStockRss.getEventType());
+                    aStockMsg.setSignalSide(aStockRss.getSignalSide());
+                    aStockMsg.setSignalScore(aStockRss.getSignalScore());
+                    aStockMsg.setCounts24Hour(counts24Hour.intValue());
+                    aStockMsg.setCounts3Day(counts3Day.intValue());
+                    aStockMsg.setCounts1Week(counts1Week.intValue());
+                    aStockMsgList.add(aStockMsg);
+                } catch (Exception e) {
+                    log.error("【警告】解析单条A股公告失败，跳过。原因: {}", e.getMessage());
                 }
+            }
 
-                // 解析公告时间
-                LocalDateTime pubDate = LocalDateTime.parse(displayTime, formatter);
-
-                // 创建并保存A股公告
-                AStockRss aStockRss = new AStockRss();
-                aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
-                aStockRss.setStockCode(stockCode);
-                aStockRss.setStockName(stockName);
-                aStockRss.setTitle(title);
-                aStockRss.setTag(tag);
-                aStockRss.setPubDate(pubDate);
-                // 设置当前插入时间
-                aStockRss.setCreateTime(LocalDateTime.now());
-                // 东方财富公告链接
-                aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + node.get("art_code").asText() + ".html");
-
-                if (!stockService.saveAStockNewsIfAbsent(aStockRss)) {
-                    log.info("A股公告已存在，跳过：【{} - {}】{}", stockCode, stockName, title);
-                    continue;
-                }
-
-                log.info("A股公告保存成功：{}", aStockRss);
-
-                // 统计该股票在24小时、3天、1周内的公告次数
-                Long counts24Hour = stockService.getAStockNoticeCounts(stockCode,
-                        GMTDateConverter.minus24Hour(pubDate),
-                        GMTDateConverter.plus1Minute(pubDate));
-                Long counts3Day = stockService.getAStockNoticeCounts(stockCode,
-                        GMTDateConverter.minus3Day(pubDate),
-                        GMTDateConverter.plus1Minute(pubDate));
-                Long counts1Week = stockService.getAStockNoticeCounts(stockCode,
-                        GMTDateConverter.minus1Week(pubDate),
-                        GMTDateConverter.plus1Minute(pubDate));
-
-                // 添加到消息列表
-                AStockMsg aStockMsg = new AStockMsg();
-                aStockMsg.setStockCode(stockCode);
-                aStockMsg.setStockName(stockName);
-                aStockMsg.setTitle(title);
-                aStockMsg.setTag(tag);
-                aStockMsg.setPubDate(displayTime);
-                aStockMsg.setCounts24Hour(counts24Hour.intValue());
-                aStockMsg.setCounts3Day(counts3Day.intValue());
-                aStockMsg.setCounts1Week(counts1Week.intValue());
-
-                aStockMsgList.add(aStockMsg);
-            } catch (Exception e) {
-                log.error("【警告】解析单条A股公告失败，跳过。原因: {}", e.getMessage());
+            if (list.size() < 100) {
+                break;
             }
         }
 
-        // 发送消息通知
         if (!aStockMsgList.isEmpty()) {
             weComApi.sendMarkdownMessageAsync(weComApi.formatAStockInfoFromList(aStockMsgList), WeComApi.MarketType.A);
         }
     }
 
+    private String buildAStockNoticeUrl(int pageIndex) {
+        return A_STOCK_NOTICE_URL + A_STOCK_NOTICE_QUERY + "&page_index=" + pageIndex;
+    }
+
+    private AStockRss buildAStockNotice(JsonNode node) {
+        SecurityRef securityRef = resolvePrimarySecurity(node.path("codes"));
+        if (securityRef == null) {
+            return null;
+        }
+
+        String title = node.path("title").asText("");
+        if (title.isBlank()) {
+            return null;
+        }
+
+        LocalDateTime pubDate = parseDisplayTime(node.path("display_time").asText(""));
+        String artCode = node.path("art_code").asText("");
+        String stockCode = securityRef.stockCode();
+
+        AStockRss aStockRss = new AStockRss();
+        aStockRss.setId(UUID.randomUUID().toString().replace("-", ""));
+        aStockRss.setArtCode(artCode);
+        aStockRss.setStockCode(stockCode);
+        aStockRss.setStockName(securityRef.stockName());
+        aStockRss.setTitle(title);
+        aStockRss.setTag(extractTagText(node.path("columns")));
+        aStockRss.setPubDate(pubDate);
+        aStockRss.setCreateTime(LocalDateTime.now());
+        aStockRss.setLink("https://data.eastmoney.com/notices/detail/" + stockCode + "/" + artCode + ".html");
+        return aStockRss;
+    }
+
+    private SecurityRef resolvePrimarySecurity(JsonNode codesNode) {
+        if (!codesNode.isArray() || codesNode.isEmpty()) {
+            return null;
+        }
+
+        SecurityRef fallback = null;
+        for (JsonNode codeNode : codesNode) {
+            String stockCode = codeNode.path("stock_code").asText("");
+            String stockName = codeNode.path("short_name").asText("");
+            if (stockCode.isBlank()) {
+                continue;
+            }
+            SecurityRef candidate = new SecurityRef(stockCode, stockName);
+            if (fallback == null) {
+                fallback = candidate;
+            }
+            if (aStockSignalService.isPreferredEquityCode(stockCode)) {
+                return candidate;
+            }
+        }
+        return fallback;
+    }
+
+    private String extractTagText(JsonNode columnsNode) {
+        List<String> tags = new ArrayList<>();
+        if (columnsNode != null && columnsNode.isArray()) {
+            for (JsonNode columnNode : columnsNode) {
+                String tag = columnNode.path("column_name").asText("");
+                if (!tag.isBlank()) {
+                    tags.add(tag);
+                }
+            }
+        }
+        return aStockSignalService.normalizeTagText(tags);
+    }
+
+    private LocalDateTime parseDisplayTime(String displayTime) {
+        String value = displayTime;
+        if (value != null && value.length() > 19) {
+            value = value.substring(0, 19);
+        }
+        return LocalDateTime.parse(value, A_STOCK_TIME_FORMATTER);
+    }
+
+    private record SecurityRef(String stockCode, String stockName) {
+    }
 }

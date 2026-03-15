@@ -26,6 +26,26 @@ public class StockFilterConfig {
     private int frequencyThreshold = 10;
 
     /**
+     * A股实时推送最低信号分
+     */
+    private int aRealtimeSignalThreshold = 70;
+
+    /**
+     * A股榜单入围最低信号分
+     */
+    private int aRankingSignalThreshold = 60;
+
+    /**
+     * A股抓取时最多回扫页数
+     */
+    private int aFetchPageCount = 5;
+
+    /**
+     * A股批量公告聚类时间窗口（分钟）
+     */
+    private int aClusterWindowMinutes = 15;
+
+    /**
      * 黑名单关键词列表 - 用于过滤"行政流水账"类噪音公告
      */
     private List<String> blacklistKeywords = Arrays.asList(
@@ -61,6 +81,25 @@ public class StockFilterConfig {
             "制度修订", "章程修订", "规则修改", "制度完善",
             "工商变更", "注册地址变更", "经营范围变更", "更名",
             "续聘会计师", "聘请律师", "持续督导"
+    );
+
+    /**
+     * 东方财富公告标签级别的强噪音类型
+     */
+    private List<String> trashTagKeywords = Arrays.asList(
+            "董事会决议", "监事会决议", "股东大会决议", "召开会议", "会议通知",
+            "募集资金使用情况报告", "募集资金使用进展情况", "募集资金补充流动资金",
+            "投资理财", "委托（受托）事项", "现金管理", "股份质押、冻结",
+            "制度修订", "章程修订", "工商登记", "工商变更", "续聘会计师",
+            "会计师事务所专项意见", "审计报告", "内部控制", "非经营性资金占用"
+    );
+
+    /**
+     * 保留入库但默认降权的公告标签
+     */
+    private List<String> grayTagKeywords = Arrays.asList(
+            "风险提示性公告", "股票交易异常波动", "监管工作函回复公告",
+            "问询函回复", "重组进展公告", "签订协议", "投资设立公司", "其他"
     );
 
     /**
@@ -101,5 +140,12 @@ public class StockFilterConfig {
      */
     public boolean meetsFrequencyThreshold(int frequency) {
         return frequency >= frequencyThreshold;
+    }
+
+    public boolean containsAnyTagKeyword(String tagText, List<String> keywords) {
+        if (tagText == null || tagText.isBlank() || keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        return keywords.stream().anyMatch(tagText::contains);
     }
 }

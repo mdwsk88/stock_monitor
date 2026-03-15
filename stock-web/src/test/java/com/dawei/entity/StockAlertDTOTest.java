@@ -225,4 +225,32 @@ class StockAlertDTOTest {
         assertEquals("warning", dto25.getColorTag());
         assertEquals("较昨日激增 400%+", dto25.getSurgeDescription());
     }
+
+    @Test
+    @DisplayName("测试A股事件评分等级口径与Prompt一致")
+    void testSignalLevel_ForAStockScoring() {
+        StockAlertDTO<?> dto59 = new StockAlertDTO<>(null, 0, 59, 0, "中性");
+        assertEquals("常规事项", dto59.getSignalLevel());
+        assertEquals("comment", dto59.getSignalColorTag());
+
+        StockAlertDTO<?> dto60 = new StockAlertDTO<>(null, 0, 60, 1, "中性");
+        assertEquals("边际催化", dto60.getSignalLevel());
+        assertEquals("success", dto60.getSignalColorTag());
+
+        StockAlertDTO<?> dto80 = new StockAlertDTO<>(null, 0, 80, 1, "利多");
+        assertEquals("高优先级", dto80.getSignalLevel());
+        assertEquals("info", dto80.getSignalColorTag());
+
+        StockAlertDTO<?> dto110 = new StockAlertDTO<>(null, 0, 110, 2, "利多");
+        assertEquals("主线级", dto110.getSignalLevel());
+        assertEquals("warning", dto110.getSignalColorTag());
+    }
+
+    @Test
+    @DisplayName("测试A股利空事件优先使用warning颜色")
+    void testSignalColorTag_BearishAlwaysWarning() {
+        StockAlertDTO<?> dto = new StockAlertDTO<>(null, 0, 80, 1, "利空");
+        assertEquals("高优先级", dto.getSignalLevel());
+        assertEquals("warning", dto.getSignalColorTag());
+    }
 }

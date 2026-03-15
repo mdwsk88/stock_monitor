@@ -22,6 +22,9 @@ public class AStockMsg {
     private String title;
     private String tag;
     private String pubDate;
+    private String eventType;
+    private String signalSide;
+    private Integer signalScore;
 
     private Integer counts24Hour;       // 某只股票在24小时内的公告次数
     private Integer counts3Day;         // 3天内的公告次数

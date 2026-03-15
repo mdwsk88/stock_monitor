@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 public class AStockRss {
 
     private String id;
+    private String artCode;
     private String stockCode;
     private String stockName;
     private String title;
@@ -31,5 +32,24 @@ public class AStockRss {
     private String link;
     private LocalDateTime pubDate;
     private LocalDateTime createTime;
+    private String eventType;
+    private String signalSide;
+    private Integer signalScore;
+    private String clusterKey;
+
+    @TableField(exist = false)
+    private String relatedTitles;
+
+    @TableField(exist = false)
+    private Integer eventCount;
+
+    @TableField(exist = false)
+    private Integer rawNoticeCount;
+
+    @TableField(exist = false)
+    private String analysisHint;
+
+    @TableField(exist = false)
+    private String clusterHighlights;
 
 }

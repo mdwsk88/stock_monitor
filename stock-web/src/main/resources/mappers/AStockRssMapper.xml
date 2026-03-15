@@ -6,6 +6,7 @@
     <!-- 通用查询映射结果 -->
     <resultMap id="BaseResultMap" type="com.dawei.entity.AStockRss">
         <id column="id" property="id" />
+        <result column="art_code" property="artCode" />
         <result column="stock_code" property="stockCode" />
         <result column="stock_name" property="stockName" />
         <result column="title" property="title" />
@@ -13,6 +14,10 @@
         <result column="link" property="link" />
         <result column="pub_date" property="pubDate" />
         <result column="create_time" property="createTime" />
+        <result column="event_type" property="eventType" />
+        <result column="signal_side" property="signalSide" />
+        <result column="signal_score" property="signalScore" />
+        <result column="cluster_key" property="clusterKey" />
     </resultMap>
 
     <resultMap id="AggregateResultMap" type="com.dawei.entity.AStockRssAggregate" extends="BaseResultMap">
@@ -22,22 +27,32 @@
     <insert id="insertIgnore" parameterType="com.dawei.entity.AStockRss">
         INSERT IGNORE INTO a_stock_rss (
             id,
+            art_code,
             stock_code,
             stock_name,
             title,
             tag,
             link,
             pub_date,
-            create_time
+            create_time,
+            event_type,
+            signal_side,
+            signal_score,
+            cluster_key
         ) VALUES (
             #{id},
+            #{artCode},
             #{stockCode},
             #{stockName},
             #{title},
             #{tag},
             #{link},
             #{pubDate},
-            #{createTime}
+            #{createTime},
+            #{eventType},
+            #{signalSide},
+            #{signalScore},
+            #{clusterKey}
         )
     </insert>
 
@@ -45,13 +60,18 @@
         WITH filtered AS (
             SELECT
                 id,
+                art_code,
                 stock_code,
                 stock_name,
                 title,
                 tag,
                 link,
                 pub_date,
-                create_time
+                create_time,
+                event_type,
+                signal_side,
+                signal_score,
+                cluster_key
             FROM
                 a_stock_rss
             WHERE
@@ -73,6 +93,7 @@
         )
         SELECT
             id,
+            art_code,
             stock_code,
             stock_name,
             title,
@@ -80,6 +101,10 @@
             link,
             pub_date,
             create_time,
+            event_type,
+            signal_side,
+            signal_score,
+            cluster_key,
             frequency
         FROM
             ranked
@@ -95,13 +120,18 @@
     <select id="selectFilteredByStockCodes" resultMap="BaseResultMap">
         SELECT
             id,
+            art_code,
             stock_code,
             stock_name,
             title,
             tag,
             link,
             pub_date,
-            create_time
+            create_time,
+            event_type,
+            signal_side,
+            signal_score,
+            cluster_key
         FROM
             a_stock_rss
         WHERE
