@@ -1,26 +1,24 @@
 package com.dawei.service.impl;
 
+import com.dawei.config.StockFilterConfig;
 import com.dawei.entity.*;
 import com.dawei.service.StockService;
+import com.dawei.utils.StockTitanCrawler;
 import com.dawei.utils.WeComApi;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rometools.rome.feed.synd.SyndEntry;
-import com.rometools.rome.feed.synd.SyndFeed;
-import com.rometools.rome.io.SyndFeedInput;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.*;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -50,7 +48,6 @@ class RssServiceImplTest {
     @Mock
     private RestTemplate restTemplate;
 
-    @InjectMocks
     private RssServiceImpl rssService;
 
     private ObjectMapper objectMapper;
@@ -58,6 +55,16 @@ class RssServiceImplTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        StockFilterConfig filterConfig = new StockFilterConfig();
+        filterConfig.setAFetchPageCount(1);
+        filterConfig.setARealtimeSignalThreshold(60);
+
+        rssService = new RssServiceImpl();
+        ReflectionTestUtils.setField(rssService, "stockService", stockService);
+        ReflectionTestUtils.setField(rssService, "weComApi", weComApi);
+        ReflectionTestUtils.setField(rssService, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(rssService, "aStockSignalService", new AStockSignalService(filterConfig));
+        ReflectionTestUtils.setField(rssService, "usPushEnabled", false);
     }
 
     // ==================== A股公告抓取测试 ====================
@@ -72,8 +79,8 @@ class RssServiceImplTest {
                 "\"list\": [" +
                     "{" +
                         "\"codes\": [{\"stock_code\": \"000001\", \"short_name\": \"平安银行\"}]," +
-                        "\"title\": \"关于xxx的公告\"," +
-                        "\"columns\": [{\"column_name\": \"股权激励\"}]," +
+                        "\"title\": \"平安银行:关于中标10亿元算力项目的公告\"," +
+                        "\"columns\": [{\"column_name\": \"重大合同\"}]," +
                         "\"display_time\": \"2026-03-13 10:30:00:000\"," +
                         "\"art_code\": \"ANN123456\"" +
                     "}" +
@@ -83,7 +90,7 @@ class RssServiceImplTest {
 
         ResponseEntity<String> mockResponse = new ResponseEntity<>(mockJson, HttpStatus.OK);
         when(restTemplate.exchange(
-            eq(RssServiceImpl.A_STOCK_NOTICE_URL),
+            contains(RssServiceImpl.A_STOCK_NOTICE_URL),
             eq(HttpMethod.GET),
             any(HttpEntity.class),
             eq(String.class)
@@ -100,7 +107,7 @@ class RssServiceImplTest {
 
         // 验证 RestTemplate 被调用（而非 CloseableHttpClient）
         verify(restTemplate, times(1)).exchange(
-            eq(RssServiceImpl.A_STOCK_NOTICE_URL),
+            contains("page_index=1"),
             eq(HttpMethod.GET),
             any(HttpEntity.class),
             eq(String.class)
@@ -151,8 +158,8 @@ class RssServiceImplTest {
                 "\"list\": [" +
                     "{" +
                         "\"codes\": [{\"stock_code\": \"000001\", \"short_name\": \"平安银行\"}]," +
-                        "\"title\": \"已存在的公告\"," +
-                        "\"columns\": [{\"column_name\": \"股权激励\"}]," +
+                        "\"title\": \"平安银行:关于中标10亿元算力项目的公告\"," +
+                        "\"columns\": [{\"column_name\": \"重大合同\"}]," +
                         "\"display_time\": \"2026-03-13 10:30:00:000\"," +
                         "\"art_code\": \"ANN123456\"" +
                     "}" +
@@ -188,8 +195,8 @@ class RssServiceImplTest {
                     "}," +
                     "{" +
                         "\"codes\": [{\"stock_code\": \"000001\", \"short_name\": \"平安银行\"}]," +
-                        "\"title\": \"正常公告\"," +
-                        "\"columns\": [{\"column_name\": \"重大事项\"}]," +
+                        "\"title\": \"平安银行:关于中标10亿元算力项目的公告\"," +
+                        "\"columns\": [{\"column_name\": \"重大合同\"}]," +
                         "\"display_time\": \"2026-03-13 10:30:00:000\"," +
                         "\"art_code\": \"ANN_GOOD\"" +
                     "}" +
@@ -212,6 +219,42 @@ class RssServiceImplTest {
         verify(weComApi, times(1)).sendMarkdownMessageAsync(anyString(), eq(WeComApi.MarketType.A));
 
         log.info("✅ A股单条脏数据隔离测试通过");
+    }
+
+    @Test
+    void testFetchAndSaveAStockNotices_PrefersEquityCodeOverBondCode() throws Exception {
+        String mockJson = "{" +
+                "\"data\": {" +
+                "\"list\": [" +
+                "{" +
+                "\"codes\": [" +
+                "{\"stock_code\": \"123211\", \"short_name\": \"阳谷转债\"}," +
+                "{\"stock_code\": \"300121\", \"short_name\": \"阳谷华泰\"}" +
+                "]," +
+                "\"title\": \"阳谷华泰:关于中标5亿元新能源项目的公告\"," +
+                "\"columns\": [{\"column_name\": \"重大合同\"}]," +
+                "\"display_time\": \"2026-03-13 10:30:00:000\"," +
+                "\"art_code\": \"ANN_EQUITY\"" +
+                "}" +
+                "]" +
+                "}" +
+                "}";
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
+                .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
+        when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
+        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
+        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
+        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        rssService.fetchAndSaveAStockNotices();
+
+        verify(stockService).saveAStockNewsIfAbsent(argThat(notice ->
+                "300121".equals(notice.getStockCode()) &&
+                "阳谷华泰".equals(notice.getStockName()) &&
+                "ANN_EQUITY".equals(notice.getArtCode())
+        ));
     }
 
     // ==================== 美股 RSS 抓取测试 ====================
@@ -257,6 +300,30 @@ class RssServiceImplTest {
             "titleZh 应该直接存储英文标题，不再调用百度翻译");
 
         log.info("✅ 百度翻译移除验证通过");
+    }
+
+    @Test
+    void testDisplayRss_SkipsUSPushWhenDisabled() throws Exception {
+        log.info("========== 测试 美股推送关闭时不发送企微 ==========");
+
+        RssServiceImpl spyService = spy(rssService);
+        SyndEntry entry = mock(SyndEntry.class);
+        when(entry.getTitle()).thenReturn("Apple wins AI contract | AAPL Stock News");
+        when(entry.getLink()).thenReturn("https://example.com/news/aapl");
+        when(entry.getPublishedDate()).thenReturn(new java.util.Date());
+
+        doReturn(List.of(entry)).when(spyService).fetchRssReed(anyString());
+        when(stockService.saveStockNewsIfAbsent(any(USStockRss.class))).thenReturn(true);
+        when(stockService.getStockUnusualCounts(any(USStockRss.class), any(), any())).thenReturn(5L);
+
+        try (var mockedCrawler = mockStatic(StockTitanCrawler.class)) {
+            mockedCrawler.when(() -> StockTitanCrawler.getTags("Apple wins AI contract")).thenReturn(List.of("AI"));
+
+            spyService.displayRss();
+        }
+
+        verify(weComApi, never()).sendMarkdownMessageAsync(anyString(), eq(WeComApi.MarketType.US));
+        log.info("✅ 美股推送关闭验证通过");
     }
 
     @Test

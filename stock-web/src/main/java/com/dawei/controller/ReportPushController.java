@@ -10,19 +10,19 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * @ClassName MorningReportController
+ * @ClassName ReportPushController
  * @Author dawei
  * @Version 2.0
- * @Description 早报/复盘/夜报手动触发接口（用于测试）
+ * @Description 推送任务手动触发接口（用于测试）
  **/
 @Slf4j
 @RestController
-@RequestMapping("/api/morning-report")
-public class MorningReportController {
+@RequestMapping({"/api/report-push", "/api/morning-report"})
+public class ReportPushController {
 
     private final MorningReportScheduler morningReportScheduler;
 
-    public MorningReportController(MorningReportScheduler morningReportScheduler) {
+    public ReportPushController(MorningReportScheduler morningReportScheduler) {
         this.morningReportScheduler = morningReportScheduler;
     }
 
@@ -33,9 +33,15 @@ public class MorningReportController {
     @GetMapping("/push/us/morning")
     public Map<String, Object> pushUSMorningReport() {
         Map<String, Object> result = new HashMap<>();
+        if (!morningReportScheduler.isUsPushEnabled()) {
+            result.put("success", true);
+            result.put("message", "美股推送当前已关闭，已跳过");
+            result.put("dataRange", "过去12小时（昨晚20:00到今早8:00）");
+            return result;
+        }
         try {
             log.info("手动触发美股早报（隔夜复盘）");
-            morningReportScheduler.pushUSMorningReport();
+            morningReportScheduler.pushUSMorningReportManually();
             result.put("success", true);
             result.put("message", "美股早报（隔夜复盘）推送成功");
             result.put("dataRange", "过去12小时（昨晚20:00到今早8:00）");
@@ -56,7 +62,7 @@ public class MorningReportController {
         Map<String, Object> result = new HashMap<>();
         try {
             log.info("手动触发A股盘前早报");
-            morningReportScheduler.pushAMorningReport();
+            morningReportScheduler.pushAMorningReportManually();
             result.put("success", true);
             result.put("message", "A股盘前早报推送成功");
             result.put("dataRange", "过去24小时（昨天8:30到今天8:30）");
@@ -77,7 +83,7 @@ public class MorningReportController {
         Map<String, Object> result = new HashMap<>();
         try {
             log.info("手动触发A股盘后复盘");
-            morningReportScheduler.pushAEveningReport();
+            morningReportScheduler.pushAEveningReportManually();
             result.put("success", true);
             result.put("message", "A股盘后复盘推送成功");
             result.put("dataRange", "当天9:00到15:00（过去6小时）");
@@ -96,9 +102,15 @@ public class MorningReportController {
     @GetMapping("/push/us/evening")
     public Map<String, Object> pushUSEveningReport() {
         Map<String, Object> result = new HashMap<>();
+        if (!morningReportScheduler.isUsPushEnabled()) {
+            result.put("success", true);
+            result.put("message", "美股推送当前已关闭，已跳过");
+            result.put("dataRange", "过去24小时（昨晚20:30到今晚20:30）");
+            return result;
+        }
         try {
             log.info("手动触发美股夜报（盘前预警）");
-            morningReportScheduler.pushUSEveningReport();
+            morningReportScheduler.pushUSEveningReportManually();
             result.put("success", true);
             result.put("message", "美股夜报（盘前预警）推送成功");
             result.put("dataRange", "过去24小时（昨晚20:30到今晚20:30）");
@@ -122,16 +134,20 @@ public class MorningReportController {
             log.info("手动触发所有推送任务");
             
             // 美股早报（隔夜复盘）
-            try {
-                morningReportScheduler.pushUSMorningReport();
-                details.put("usMorning", Map.of("success", true, "message", "美股早报推送成功"));
-            } catch (Exception e) {
-                details.put("usMorning", Map.of("success", false, "message", e.getMessage()));
+            if (!morningReportScheduler.isUsPushEnabled()) {
+                details.put("usMorning", Map.of("success", true, "message", "美股推送已关闭，已跳过"));
+            } else {
+                try {
+                    morningReportScheduler.pushUSMorningReportManually();
+                    details.put("usMorning", Map.of("success", true, "message", "美股早报推送成功"));
+                } catch (Exception e) {
+                    details.put("usMorning", Map.of("success", false, "message", e.getMessage()));
+                }
             }
             
             // A股盘前早报
             try {
-                morningReportScheduler.pushAMorningReport();
+                morningReportScheduler.pushAMorningReportManually();
                 details.put("aMorning", Map.of("success", true, "message", "A股盘前早报推送成功"));
             } catch (Exception e) {
                 details.put("aMorning", Map.of("success", false, "message", e.getMessage()));
@@ -139,18 +155,22 @@ public class MorningReportController {
             
             // A股盘后复盘
             try {
-                morningReportScheduler.pushAEveningReport();
+                morningReportScheduler.pushAEveningReportManually();
                 details.put("aEvening", Map.of("success", true, "message", "A股盘后复盘推送成功"));
             } catch (Exception e) {
                 details.put("aEvening", Map.of("success", false, "message", e.getMessage()));
             }
             
             // 美股夜报
-            try {
-                morningReportScheduler.pushUSEveningReport();
-                details.put("usEvening", Map.of("success", true, "message", "美股夜报推送成功"));
-            } catch (Exception e) {
-                details.put("usEvening", Map.of("success", false, "message", e.getMessage()));
+            if (!morningReportScheduler.isUsPushEnabled()) {
+                details.put("usEvening", Map.of("success", true, "message", "美股推送已关闭，已跳过"));
+            } else {
+                try {
+                    morningReportScheduler.pushUSEveningReportManually();
+                    details.put("usEvening", Map.of("success", true, "message", "美股夜报推送成功"));
+                } catch (Exception e) {
+                    details.put("usEvening", Map.of("success", false, "message", e.getMessage()));
+                }
             }
             
             result.put("success", true);

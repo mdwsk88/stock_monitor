@@ -7,6 +7,7 @@ import com.dawei.service.AISummaryService;
 import com.dawei.service.StockRankService;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,8 +29,11 @@ public class MorningReportScheduler {
     private final StockRankService stockRankService;
     private final AISummaryService aiSummaryService;
     private final WeComApi weComApi;
+    @Value("${stock.push.us-enabled:false}")
+    private boolean usPushEnabled;
 
-    private static final int TOP_N = 5;
+    private static final int US_TOP_N = 5;
+    private static final int A_TOP_N = 8;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     public MorningReportScheduler(StockRankService stockRankService, 
@@ -50,9 +54,20 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 7 * * ?")
     public void pushUSMorningReport() {
+        runUSMorningReport(false);
+    }
+
+    public void pushUSMorningReportManually() {
+        runUSMorningReport(true);
+    }
+
+    private void runUSMorningReport(boolean manualTrigger) {
+        if (skipUSPush("美股早报（隔夜复盘）")) {
+            return;
+        }
         LocalDateTime now = LocalDateTime.now();
         String today = now.format(DATE_FORMATTER);
-        log.info("【美股早报（隔夜复盘）】开始执行，日期: {}", today);
+        log.info("【美股早报（隔夜复盘）】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
         try {
             // 数据提取范围：过去12小时（昨晚20:00到今早8:00）
@@ -61,7 +76,7 @@ public class MorningReportScheduler {
             log.info("【美股早报（隔夜复盘）】数据提取范围: {} 至 {}", startTime, endTime);
             
             // 1. 查询指定时间范围内美股异动排名前5的股票（包含频次统计）
-            List<StockAlertDTO<USStockRss>> topStocks = stockRankService.getUSTopNStocksWithFrequency(TOP_N, startTime, endTime);
+            List<StockAlertDTO<USStockRss>> topStocks = stockRankService.getUSTopNStocksWithFrequency(US_TOP_N, startTime, endTime);
 
             if (topStocks.isEmpty()) {
                 log.warn("【美股早报（隔夜复盘）】过去24小时内无美股异动数据");
@@ -97,17 +112,25 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 8 * * ?")
     public void pushAMorningReport() {
+        runAMorningReport(false);
+    }
+
+    public void pushAMorningReportManually() {
+        runAMorningReport(true);
+    }
+
+    private void runAMorningReport(boolean manualTrigger) {
         LocalDateTime now = LocalDateTime.now();
         
         // 周末静默处理：A股周末不开盘，不发送早报
         DayOfWeek dayOfWeek = now.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+        if (!manualTrigger && (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY)) {
             log.info("【A股盘前早报】今天是{}，股市休市，静默处理不发送早报", dayOfWeek);
             return;
         }
         
         String today = now.format(DATE_FORMATTER);
-        log.info("【A股盘前早报】开始执行，日期: {}", today);
+        log.info("【A股盘前早报】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
         try {
             // 数据提取范围：过去24小时（昨天上午8:30到今天上午8:30）
@@ -115,8 +138,8 @@ public class MorningReportScheduler {
             LocalDateTime endTime = now;
             log.info("【A股盘前早报】数据提取范围: {} 至 {}", startTime, endTime);
             
-            // 1. 查询指定时间范围内A股公告异动排名前5的股票（包含频次统计）
-            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(TOP_N, startTime, endTime);
+            // 1. 查询指定时间范围内A股公告候选股票（包含频次统计）
+            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(A_TOP_N, startTime, endTime);
 
             if (topStocks.isEmpty()) {
                 log.warn("【A股盘前早报】过去24小时内无A股公告数据");
@@ -152,17 +175,25 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 15 * * ?")
     public void pushAEveningReport() {
+        runAEveningReport(false);
+    }
+
+    public void pushAEveningReportManually() {
+        runAEveningReport(true);
+    }
+
+    private void runAEveningReport(boolean manualTrigger) {
         LocalDateTime now = LocalDateTime.now();
         
         // 周末静默处理：A股周末不开盘，不发送复盘
         DayOfWeek dayOfWeek = now.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+        if (!manualTrigger && (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY)) {
             log.info("【A股盘后复盘】今天是{}，股市休市，静默处理不发送复盘", dayOfWeek);
             return;
         }
         
         String today = now.format(DATE_FORMATTER);
-        log.info("【A股盘后复盘】开始执行，日期: {}", today);
+        log.info("【A股盘后复盘】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
         try {
             // 数据提取范围：当天9:00到15:00（过去6小时）
@@ -170,8 +201,8 @@ public class MorningReportScheduler {
             LocalDateTime endTime = now.withHour(15).withMinute(0).withSecond(0);
             log.info("【A股盘后复盘】数据提取范围: {} 至 {}", startTime, endTime);
             
-            // 1. 查询指定时间范围内A股公告异动排名前5的股票（包含频次统计）
-            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(TOP_N, startTime, endTime);
+            // 1. 查询指定时间范围内A股公告候选股票（包含频次统计）
+            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(A_TOP_N, startTime, endTime);
 
             if (topStocks.isEmpty()) {
                 log.warn("【A股盘后复盘】过去24小时内无A股公告数据");
@@ -205,9 +236,20 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 20 * * ?")
     public void pushUSEveningReport() {
+        runUSEveningReport(false);
+    }
+
+    public void pushUSEveningReportManually() {
+        runUSEveningReport(true);
+    }
+
+    private void runUSEveningReport(boolean manualTrigger) {
+        if (skipUSPush("美股夜报（盘前预警）")) {
+            return;
+        }
         LocalDateTime now = LocalDateTime.now();
         String today = now.format(DATE_FORMATTER);
-        log.info("【美股夜报（盘前预警）】开始执行，日期: {}", today);
+        log.info("【美股夜报（盘前预警）】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
         try {
             // 数据提取范围：过去24小时（昨晚20:30到今晚20:30）
@@ -216,7 +258,7 @@ public class MorningReportScheduler {
             log.info("【美股夜报（盘前预警）】数据提取范围: {} 至 {}", startTime, endTime);
             
             // 1. 查询指定时间范围内美股异动排名前5的股票（包含频次统计）
-            List<StockAlertDTO<USStockRss>> topStocks = stockRankService.getUSTopNStocksWithFrequency(TOP_N, startTime, endTime);
+            List<StockAlertDTO<USStockRss>> topStocks = stockRankService.getUSTopNStocksWithFrequency(US_TOP_N, startTime, endTime);
 
             if (topStocks.isEmpty()) {
                 log.warn("【美股今夜雷达】过去24小时内无美股异动数据");
@@ -238,6 +280,18 @@ public class MorningReportScheduler {
             String errorMsg = buildUSStockErrorEveningMessage(today, e.getMessage());
             weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.US);
         }
+    }
+
+    public boolean isUsPushEnabled() {
+        return usPushEnabled;
+    }
+
+    private boolean skipUSPush(String reportName) {
+        if (usPushEnabled) {
+            return false;
+        }
+        log.info("【{}】当前已关闭美股推送，跳过执行", reportName);
+        return true;
     }
 
     /**

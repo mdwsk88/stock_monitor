@@ -26,6 +26,25 @@ public class StockAlertDTO<T> {
     private int frequency;
 
     /**
+     * A股事件评分。美股沿用0，保持原有频次逻辑。
+     */
+    private int signalScore;
+
+    /**
+     * 归并后的事件簇数量
+     */
+    private int eventCount;
+
+    /**
+     * A股信号方向：利多/利空/中性
+     */
+    private String signalSide;
+
+    public StockAlertDTO(T stock, int frequency) {
+        this(stock, frequency, 0, 0, "中性");
+    }
+
+    /**
      * 活跃度等级描述
      * 注意：由于已过滤阈值<10的记录，实际不会出现"轻度活跃"
      */
@@ -69,6 +88,33 @@ public class StockAlertDTO<T> {
             return "较昨日显著上升";
         } else {
             return "活跃度一般";
+        }
+    }
+
+    public String getSignalLevel() {
+        if (signalScore >= 110) {
+            return "主线级";
+        } else if (signalScore >= 80) {
+            return "高优先级";
+        } else if (signalScore >= 60) {
+            return "边际催化";
+        } else {
+            return "常规事项";
+        }
+    }
+
+    public String getSignalColorTag() {
+        if ("利空".equals(signalSide)) {
+            return "warning";
+        }
+        if (signalScore >= 110) {
+            return "warning";
+        } else if (signalScore >= 80) {
+            return "info";
+        } else if (signalScore >= 60) {
+            return "success";
+        } else {
+            return "comment";
         }
     }
 }

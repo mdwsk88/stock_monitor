@@ -255,9 +255,11 @@ public class WeComApi {
                "<font color=\"comment\">📅 时间：</font>" + aStockMsg.getPubDate() + "\n" +
                "<font color=\"comment\">📰 标题：</font>" + aStockMsg.getTitle() + "\n" +
                "<font color=\"warning\">🏷️ 类型：</font>" + aStockMsg.getTag() + "\n" +
-               "<font color=\"comment\">📊 统计：</font>24小时异动=" + aStockMsg.getCounts24Hour() + "次; " +
-               "3天内异动=" + aStockMsg.getCounts3Day() + "次; " +
-               "1周内异动=" + aStockMsg.getCounts1Week() + "次";
+               "<font color=\"comment\">🧭 事件：</font>" + aStockMsg.getEventType() + " / " + aStockMsg.getSignalSide() + "\n" +
+               "<font color=\"comment\">🎯 评分：</font>" + aStockMsg.getSignalScore() + " 分\n" +
+               "<font color=\"comment\">📊 支撑：</font>24小时公告=" + aStockMsg.getCounts24Hour() + "条; " +
+               "3天内公告=" + aStockMsg.getCounts3Day() + "条; " +
+               "1周内公告=" + aStockMsg.getCounts1Week() + "条";
     }
 
     /**
