@@ -1,12 +1,14 @@
 package com.dawei;
 
 import com.dawei.service.RssService;
+import com.dawei.service.MacroNewsService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -27,12 +29,15 @@ class StartupRunnerTest {
     @Mock
     private RssService rssService;
 
+    @Mock
+    private MacroNewsService macroNewsService;
+
     @InjectMocks
     private StartupRunner startupRunner;
 
     @Test
     void testRunExecutesBothTasks() throws Exception {
-        log.info("========== 测试启动时执行两个低频任务 ==========");
+        log.info("========== 测试启动时执行三条初始化任务 ==========");
 
         // 执行启动任务
         startupRunner.run();
@@ -43,7 +48,10 @@ class StartupRunnerTest {
         // 验证A股低频任务被执行
         verify(rssService, times(1)).fetchAndSaveAStockNotices();
 
-        log.info("✅ 启动任务执行验证通过 - 两个低频任务都被调用");
+        // 验证宏观主题抓取被执行
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+
+        log.info("✅ 启动任务执行验证通过 - 三条初始化任务都被调用");
     }
 
     @Test
@@ -62,8 +70,9 @@ class StartupRunnerTest {
 
         // 验证即使美股任务失败，A股任务仍然被执行
         verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
 
-        log.info("✅ 异常隔离验证通过 - 美股失败不影响A股任务执行");
+        log.info("✅ 异常隔离验证通过 - 美股失败不影响后续任务执行");
     }
 
     @Test
@@ -82,8 +91,25 @@ class StartupRunnerTest {
 
         // 验证A股任务被调用（虽然失败了）
         verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
 
-        log.info("✅ 异常隔离验证通过 - A股失败不影响美股任务执行");
+        log.info("✅ 异常隔离验证通过 - A股失败不影响宏观任务执行");
+    }
+
+    @Test
+    void testRunContinuesWhenMacroTaskFails() throws Exception {
+        log.info("========== 测试宏观任务失败时前序任务不受影响 ==========");
+
+        doThrow(new RuntimeException("宏观源异常"))
+                .when(macroNewsService).fetchAndSaveMacroNews();
+
+        assertDoesNotThrow(() -> startupRunner.run());
+
+        verify(rssService, times(1)).displayRss();
+        verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+
+        log.info("✅ 异常隔离验证通过 - 宏观任务失败不影响前序任务");
     }
 
     @Test
@@ -111,14 +137,36 @@ class StartupRunnerTest {
         log.info("========== 测试任务执行顺序 ==========");
 
         // 创建 inOrder 验证器来验证调用顺序
-        org.mockito.InOrder inOrder = inOrder(rssService);
+        org.mockito.InOrder inOrder = inOrder(rssService, macroNewsService);
 
         startupRunner.run();
 
-        // 验证先执行美股，后执行A股
+        // 验证先执行美股，后执行A股，最后执行宏观
         inOrder.verify(rssService).displayRss();
         inOrder.verify(rssService).fetchAndSaveAStockNotices();
+        inOrder.verify(macroNewsService).fetchAndSaveMacroNews();
 
-        log.info("✅ 执行顺序验证通过 - 先美股后A股");
+        log.info("✅ 执行顺序验证通过 - 先美股后A股再宏观");
+    }
+
+    @Test
+    void testRunSkipsUSStartupWhenRuntimeDisabled() throws Exception {
+        ReflectionTestUtils.setField(startupRunner, "usRuntimeEnabled", false);
+
+        startupRunner.run();
+
+        verify(rssService, never()).displayRss();
+        verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+    }
+
+    @Test
+    void testRunSkipsAllStartupTasksWhenStartupDisabled() throws Exception {
+        ReflectionTestUtils.setField(startupRunner, "startupEnabled", false);
+
+        startupRunner.run();
+
+        verifyNoInteractions(rssService);
+        verifyNoInteractions(macroNewsService);
     }
 }

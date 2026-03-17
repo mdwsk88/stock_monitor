@@ -29,5 +29,7 @@ public class AStockMsg {
     private Integer counts24Hour;       // 某只股票在24小时内的公告次数
     private Integer counts3Day;         // 3天内的公告次数
     private Integer counts1Week;        // 1周内的公告次数
+    private Integer batchNoticeCount;   // 本轮抓取命中的公告条数
+    private String relatedTitles;       // 代表性标题之外的其他标题摘要
 
 }

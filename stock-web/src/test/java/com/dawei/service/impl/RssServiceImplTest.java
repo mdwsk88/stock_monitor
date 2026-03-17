@@ -257,6 +257,54 @@ class RssServiceImplTest {
         ));
     }
 
+    @Test
+    void testFetchAndSaveAStockNotices_MergesRealtimeAlertsByStock() throws Exception {
+        String mockJson = "{" +
+                "\"data\": {" +
+                "\"list\": [" +
+                "{" +
+                "\"codes\": [{\"stock_code\": \"600599\", \"short_name\": \"ST熊猫\"}]," +
+                "\"title\": \"ST熊猫:*ST熊猫关于公司股票交易风险提示公告\"," +
+                "\"columns\": [{\"column_name\": \"风险提示性公告\"}]," +
+                "\"display_time\": \"2026-03-16 19:29:49:000\"," +
+                "\"art_code\": \"ANN_RISK_1\"" +
+                "}," +
+                "{" +
+                "\"codes\": [{\"stock_code\": \"600599\", \"short_name\": \"ST熊猫\"}]," +
+                "\"title\": \"ST熊猫:*ST熊猫关于公司股票可能被终止上市的第四次风险提示公告\"," +
+                "\"columns\": [{\"column_name\": \"终止上市风险提示\"}]," +
+                "\"display_time\": \"2026-03-16 19:29:41:000\"," +
+                "\"art_code\": \"ANN_RISK_2\"" +
+                "}" +
+                "]" +
+                "}" +
+                "}";
+
+        when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
+                .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
+        when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
+        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L, 2L, 4L, 2L, 3L, 5L);
+        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
+        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
+        rssService.fetchAndSaveAStockNotices();
+
+        verify(weComApi).formatAStockInfoFromList(argThat(list -> {
+            if (list == null || list.size() != 1) {
+                return false;
+            }
+            AStockMsg message = list.get(0);
+            return "600599".equals(message.getStockCode())
+                    && Integer.valueOf(2).equals(message.getBatchNoticeCount())
+                    && message.getRelatedTitles() != null
+                    && message.getRelatedTitles().contains("终止上市")
+                    && message.getEventType() != null
+                    && message.getEventType().contains("交易风险")
+                    && message.getEventType().contains("退市风险");
+        }));
+    }
+
     // ==================== 美股 RSS 抓取测试 ====================
 
     @Test
