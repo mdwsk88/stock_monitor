@@ -36,6 +36,13 @@
             <groupId>com.dawei</groupId>
             <artifactId>stock-common</artifactId>
             <version>1.0-SNAPSHOT</version>
+            <exclusions>
+                <!-- a-stock-mcp 必须运行在 reactive 模式下，否则 MCP SSE 路由不会注册。 -->
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-web</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
