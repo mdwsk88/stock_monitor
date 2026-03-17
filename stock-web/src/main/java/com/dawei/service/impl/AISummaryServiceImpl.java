@@ -1,12 +1,16 @@
 package com.dawei.service.impl;
 
+import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.AReportResonanceCard;
 import com.dawei.entity.AStockRss;
+import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
 import com.dawei.service.AISummaryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
@@ -26,15 +30,20 @@ import java.util.stream.Collectors;
 public class AISummaryServiceImpl implements AISummaryService {
 
     private final ChatClient chatClient;
+    private final AStockReportClassifier aStockReportClassifier;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int A_STOCK_SECTION_LIMIT = 3;
-    private static final List<String> A_STOCK_RISK_EVENT_KEYWORDS = List.of(
-            "诉讼仲裁", "监管处罚", "业绩承压", "交易风险", "减持套现"
-    );
-    private static final List<String> A_STOCK_RISK_TITLE_KEYWORDS = List.of(
-            "退市风险", "立案", "处罚", "诉讼", "仲裁", "司法冻结", "减持", "异常波动"
-    );
+
+    public AISummaryServiceImpl(ChatClient chatClient) {
+        this(chatClient, new AStockReportClassifier());
+    }
+
+    @Autowired
+    public AISummaryServiceImpl(ChatClient chatClient, AStockReportClassifier aStockReportClassifier) {
+        this.chatClient = chatClient;
+        this.aStockReportClassifier = aStockReportClassifier;
+    }
 
     // 美股总结提示词模板
     private static final String US_STOCK_SUMMARY_PROMPT = """
@@ -178,6 +187,12 @@ public class AISummaryServiceImpl implements AISummaryService {
         统计时长：过去24小时
         数据源：东方财富公告源（已完成去噪、事件聚类、规则评分）
         
+        宏观主题数据：
+        {macroThemeData}
+
+        共振标的数据：
+        {resonanceData}
+
         股票事件数据：
         {stockData}
 
@@ -186,9 +201,11 @@ public class AISummaryServiceImpl implements AISummaryService {
            - 只关注业绩超预期、重大合同、中标、并购重组、产品获批、回购增持、立案调查、减持、诉讼处罚等会改变预期的事件。
            - 如果只是治理、会务、理财、募集资金例行动作、补充披露等常规事务，直接忽略，不要强行写成机会。
         2. 必须先分栏输出：
+           - `## 宏观主线`：只写真正会影响明日交易主线的政策、行业、流动性和跨境风险。
+           - `## 共振标的`：只写“公告事件”和“宏观主题”同时命中的股票，解释为什么它比普通公告更值得高看或回避。
            - `## 机会榜`：只写偏利多或可交易的中性事件。
            - `## 风险榜`：只写 ST/退市风险/诉讼/处罚/立案/减持/异常波动等利空或高风险事件。
-           - 如果某一栏没有达到阈值的标的，直接写：`<font color="comment">暂无达到阈值的机会事件</font>` 或 `暂无高优先级风险事件`。
+           - 如果某一栏没有达到阈值的标的，直接写：`<font color="comment">暂无达到阈值的机会事件</font>`、`暂无高优先级风险事件`、`暂无达到阈值的宏观主线`、`暂无公告与主题共振标的`。
         3. 必须提炼预期差：
            - 不要复述标题，要回答“为什么资金会在盘前多看一眼/避开它”。
            - 格式：【业务/财务影响】+【情绪或资金如何交易它】
@@ -203,8 +220,8 @@ public class AISummaryServiceImpl implements AISummaryService {
         【输出格式要求】
         1. 严格使用企业微信支持的 Markdown 语法
         2. 只输出最终的 Markdown 内容，不要任何解释
-        3. 先写 `## 机会榜`，再写 `## 风险榜`
-        4. 每个榜单最多写 3 只，按事件评分降序排列
+        3. 先写 `## 宏观主线`，再写 `## 共振标的`，然后是 `## 机会榜` 和 `## 风险榜`
+        4. `宏观主线` 最多写 3 条，`共振标的/机会榜/风险榜` 各最多写 3 只
         5. 宁缺毋滥：如果没有达到阈值的优质标的，宁可只推1只甚至不推
         6. 每只股票分析控制在 50-80 字，直击要害
 
@@ -212,6 +229,15 @@ public class AISummaryServiceImpl implements AISummaryService {
         - 标题格式：🌅 AI 盘前异动雷达 | 日期
         - 开头统计行：扫描时长、数据源（已做去噪、事件聚类和风险分流）
         - 股票条目格式：
+          ## 宏观主线
+          1. 主题名 | 事件类型
+          🧭 方向判断：<font color="warning/info/comment">【利多/中性/利空】</font>
+          🎯 主题强度：<font color="颜色">分数 分 (主线级/高优先级/边际催化，关联 N 只映射标的)</font>
+          🧠 主线解读：【政策/行业影响】+【资金可能如何沿主题交易】
+          ## 共振标的
+          1. 股票名 (代码) | 宏观主题
+          🔗 共振强度：<font color="颜色">分数 分 (强共振/高共振/弱共振)</font>
+          🧠 共振逻辑：【公告催化】+【宏观主题如何放大资金关注度】
           ## 机会榜
           1. 股票名 (代码) | 🇨🇳 A股
           📈 事件判断：<font color="warning">【强烈看多】</font> / <font color="info">【谨慎看多】</font> / <font color="comment">【中性观望】</font> / <font color="warning">【利空预警】</font>
@@ -235,6 +261,19 @@ public class AISummaryServiceImpl implements AISummaryService {
         # 🌅 A股盘前异动雷达 | 2026-03-07
 
         过去 24 小时内，系统完成了公告去噪、事件聚类和风险分流，以下标的是盘前最值得关注的机会与风险：
+
+        ## 宏观主线
+
+        > 1. 算力 | 政策扶持
+        > 🧭 方向判断：<font color="info">【利多】</font>
+        > 🎯 主题强度：<font color="info">90 分 (高优先级，关联 3 只映射标的)</font>
+        > 🧠 主线解读：智算基础设施建设再获强化（政策影响），资金容易沿算力链做扩散与映射交易。
+
+        ## 共振标的
+
+        > 1. 浪潮信息 (000977) | 算力
+        > 🔗 共振强度：<font color="warning">136 分 (强共振)</font>
+        > 🧠 共振逻辑：服务器订单与算力公告本身已具备交易预期差（公告催化），叠加算力主线升温后，盘前更容易获得资金抢跑定价。
 
         ## 机会榜
 
@@ -278,6 +317,12 @@ public class AISummaryServiceImpl implements AISummaryService {
         统计时段：日内（9:00-15:00）
         数据源：东方财富公告源（已完成去噪、事件聚类、规则评分）
         
+        宏观主题数据：
+        {macroThemeData}
+
+        共振标的数据：
+        {resonanceData}
+
         股票事件数据：
         {stockData}
 
@@ -289,9 +334,11 @@ public class AISummaryServiceImpl implements AISummaryService {
            - 示例："【债务疑云】受外媒关于其非标债务展期谈判遇阻的传闻影响，引发市场对流动性的担忧，导致板块情绪承压。"
            - 示例："【地缘博弈】受美国相关生物安全法案最新进展的扰动，多空双方今日分歧极大，新闻面上澄清公告与外媒小作文交织，呈现宽幅震荡。"
         2. **先拆成双榜**：
+           - `## 宏观主线`：解释今天真正影响盘面的政策、行业、流动性和外部风险。
+           - `## 共振标的`：解释哪些个股同时被“公告事件”和“宏观主线”共振放大。
            - `## 机会榜`：解释当天偏利多或可交易的中性事件为何被资金关注。
            - `## 风险榜`：解释 ST/退市风险/诉讼/处罚/立案/减持/异常波动等事件为何压制情绪。
-           - 如果某一栏为空，直接写：`<font color="comment">暂无达到阈值的机会事件</font>` 或 `暂无高优先级风险事件`。
+           - 如果某一栏为空，直接写：`<font color="comment">暂无达到阈值的机会事件</font>`、`暂无高优先级风险事件`、`暂无达到阈值的宏观主线`、`暂无公告与主题共振标的`。
         3. **热度等级判定**：
            - 基于signalScore判断热度：
              * signalScore >= 110: 🔥 主线级
@@ -305,16 +352,23 @@ public class AISummaryServiceImpl implements AISummaryService {
         【输出格式要求】
         1. 严格使用企业微信支持的 Markdown 语法
         2. 只输出最终的 Markdown 内容，不要任何解释
-        3. 先写 `## 机会榜`，再写 `## 风险榜`
-        4. 每个榜单最多写 3 只，按事件评分降序排列
+        3. 先写 `## 宏观主线`，再写 `## 共振标的`，然后是 `## 机会榜` 和 `## 风险榜`
+        4. `宏观主线` 最多写 3 条，`共振标的/机会榜/风险榜` 各最多写 3 只，按重要性降序排列
         5. 宁缺毋滥：如果没有达到阈值的优质标的，宁可只推1只甚至不推
         6. 每只股票分析控制在 60-100 字，直击要害
 
         【格式规范】
         - 标题格式：# 🌆 A股盘后情绪解码 | 日期（使用傍晚图标，一级标题）
-        - 开头文案："今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线："
-        - 先输出 `## 机会榜`，再输出 `## 风险榜`
+        - 开头文案："今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线："
+        - 先输出 `## 宏观主线`、`## 共振标的`，再输出 `## 机会榜` 和 `## 风险榜`
         - 股票条目格式（每行前面都要加 > ，形成引用块）：
+          > 1. 主题名 | 事件类型
+          > 🧭 主线方向：<font color="warning/info/comment">【利多/中性/利空】</font>
+          > 🎯 主题强度：<font color="颜色">分数 分 (等级，关联 N 只映射标的)</font>
+          > 🧠 盘面影响解码：【核心原因词】+ 主题为什么会对盘面造成影响
+          > 1. 股票名 (代码) | 宏观主题
+          > 🔗 共振强度：<font color="颜色">分数 分 (强共振/高共振/弱共振)</font>
+          > 🧠 共振逻辑解码：【公告影响】+【主题放大后的资金交易方式】
           > 1. 股票名 (代码) | 🇨🇳 A股
           > 🔥/📈/📉/⚖️ 当日热度：<font color="颜色">等级 (事件评分 X 分，Y 个事件簇 / Z 条支撑公告)</font>
           > 🧠 涨跌逻辑解码：【核心原因词】+ 具体逻辑解释
@@ -333,7 +387,20 @@ public class AISummaryServiceImpl implements AISummaryService {
         【示例输出】
         # 🌆 A股盘后情绪解码 | 2026-03-12
 
-        今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线：
+        今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线：
+
+        ## 宏观主线
+
+        > 1. 算力 | 政策扶持
+        > 🧭 主线方向：<font color="info">【利多】</font>
+        > 🎯 主题强度：<font color="info">90 分 (高优先级，关联 3 只映射标的)</font>
+        > 🧠 盘面影响解码：【产业强化】智算基础设施规范落地后，算力链资金更容易围绕服务器、光模块和国产算力平台做集中交易。
+
+        ## 共振标的
+
+        > 1. 工业富联 (601138) | 算力
+        > 🔗 共振强度：<font color="warning">138 分 (强共振)</font>
+        > 🧠 共振逻辑解码：【订单兑现】服务器订单本就强化了业绩预期，叠加算力主线再升温后，午后资金更容易顺着主题做加速抢筹。
 
         ## 机会榜
 
@@ -471,11 +538,6 @@ public class AISummaryServiceImpl implements AISummaryService {
         
         【请生成报告】
         """;
-
-    public AISummaryServiceImpl(ChatClient chatClient) {
-        this.chatClient = chatClient;
-    }
-
     @Override
     public String summarizeUSStocks(List<USStockRss> stockList) {
         if (stockList == null || stockList.isEmpty()) {
@@ -546,49 +608,85 @@ public class AISummaryServiceImpl implements AISummaryService {
 
     @Override
     public String generateAMorningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate) {
-        if (stockAlertList == null || stockAlertList.isEmpty()) {
+        AStockReportClassifier.Sections sections = aStockReportClassifier.split(stockAlertList, A_STOCK_SECTION_LIMIT);
+        AReportFusionContext context = new AReportFusionContext();
+        context.setOpportunityAlerts(sections.opportunities());
+        context.setRiskAlerts(sections.risks());
+        return generateAMorningReportMarkdown(context, reportDate);
+    }
+
+    @Override
+    public String generateAMorningReportMarkdown(AReportFusionContext reportContext, String reportDate) {
+        if (reportContext == null || reportContext.isEmpty()) {
             return buildNoDataMarkdown(reportDate, "A股");
         }
 
-        String stockData = formatAStockAlertData(stockAlertList);
+        String stockData = formatAStockAlertData(reportContext.getOpportunityAlerts(), reportContext.getRiskAlerts());
+        String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
+        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates());
         String prompt = A_MORNING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
+                .replace("{macroThemeData}", macroThemeData)
+                .replace("{resonanceData}", resonanceData)
                 .replace("{stockData}", stockData);
 
         try {
-            log.info("开始生成A股盘前早报 Markdown，日期: {}，共 {} 只股票", reportDate, stockAlertList.size());
+            log.info("开始生成A股盘前早报 Markdown，日期: {}，机会={}，风险={}，宏观主题={}，共振={}",
+                    reportDate,
+                    sizeOf(reportContext.getOpportunityAlerts()),
+                    sizeOf(reportContext.getRiskAlerts()),
+                    sizeOf(reportContext.getMacroThemes()),
+                    sizeOf(reportContext.getResonanceCandidates()));
             String markdown = chatClient.prompt(new Prompt(prompt))
                     .call()
                     .content();
             log.info("A股盘前早报 Markdown 生成完成");
-            return ensureAStockMarkdown(markdown, stockAlertList, reportDate, true);
+            return ensureAStockMarkdown(markdown, reportContext, reportDate, true);
         } catch (Exception e) {
             log.error("生成A股盘前早报 Markdown 失败: {}", e.getMessage(), e);
-            return generateAMorningFallbackMarkdown(stockAlertList, reportDate);
+            return generateAMorningFallbackMarkdown(reportContext, reportDate);
         }
     }
 
     @Override
     public String generateAEveningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate) {
-        if (stockAlertList == null || stockAlertList.isEmpty()) {
+        AStockReportClassifier.Sections sections = aStockReportClassifier.split(stockAlertList, A_STOCK_SECTION_LIMIT);
+        AReportFusionContext context = new AReportFusionContext();
+        context.setOpportunityAlerts(sections.opportunities());
+        context.setRiskAlerts(sections.risks());
+        return generateAEveningReportMarkdown(context, reportDate);
+    }
+
+    @Override
+    public String generateAEveningReportMarkdown(AReportFusionContext reportContext, String reportDate) {
+        if (reportContext == null || reportContext.isEmpty()) {
             return buildAStockNoDataEveningMarkdown(reportDate);
         }
 
-        String stockData = formatAStockAlertData(stockAlertList);
+        String stockData = formatAStockAlertData(reportContext.getOpportunityAlerts(), reportContext.getRiskAlerts());
+        String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
+        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates());
         String prompt = A_EVENING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
+                .replace("{macroThemeData}", macroThemeData)
+                .replace("{resonanceData}", resonanceData)
                 .replace("{stockData}", stockData);
 
         try {
-            log.info("开始生成A股盘后复盘 Markdown，日期: {}，共 {} 只股票", reportDate, stockAlertList.size());
+            log.info("开始生成A股盘后复盘 Markdown，日期: {}，机会={}，风险={}，宏观主题={}，共振={}",
+                    reportDate,
+                    sizeOf(reportContext.getOpportunityAlerts()),
+                    sizeOf(reportContext.getRiskAlerts()),
+                    sizeOf(reportContext.getMacroThemes()),
+                    sizeOf(reportContext.getResonanceCandidates()));
             String markdown = chatClient.prompt(new Prompt(prompt))
                     .call()
                     .content();
             log.info("A股盘后复盘 Markdown 生成完成");
-            return ensureAStockMarkdown(markdown, stockAlertList, reportDate, false);
+            return ensureAStockMarkdown(markdown, reportContext, reportDate, false);
         } catch (Exception e) {
             log.error("生成A股盘后复盘 Markdown 失败: {}", e.getMessage(), e);
-            return generateEveningFallbackMarkdown(stockAlertList, reportDate);
+            return generateEveningFallbackMarkdown(reportContext, reportDate);
         }
     }
 
@@ -704,11 +802,11 @@ public class AISummaryServiceImpl implements AISummaryService {
     /**
      * 格式化A股异动数据（包含频次和所有相关标题）
      */
-    private String formatAStockAlertData(List<StockAlertDTO<AStockRss>> stockAlertList) {
+    private String formatAStockAlertData(List<StockAlertDTO<AStockRss>> opportunities,
+                                         List<StockAlertDTO<AStockRss>> risks) {
         StringBuilder sb = new StringBuilder();
-        AStockReportSections sections = splitAStockReportSections(stockAlertList);
-        appendAStockEventCards(sb, "## OpportunityCandidates", sections.opportunities());
-        appendAStockEventCards(sb, "## RiskCandidates", sections.risks());
+        appendAStockEventCards(sb, "## OpportunityCandidates", opportunities);
+        appendAStockEventCards(sb, "## RiskCandidates", risks);
         return sb.toString();
     }
 
@@ -739,6 +837,63 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("cluster_highlights:\n").append(indentMultiline(stock.getClusterHighlights() != null ? stock.getClusterHighlights() : "N/A", "  - ")).append("\n");
             sb.append("\n");
         }
+    }
+
+    private String formatMacroThemeData(List<MacroThemeEvent> macroThemes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## MacroThemeCandidates\n");
+        if (macroThemes == null || macroThemes.isEmpty()) {
+            sb.append("- none\n\n");
+            return sb.toString();
+        }
+        for (int i = 0; i < macroThemes.size(); i++) {
+            MacroThemeEvent theme = macroThemes.get(i);
+            sb.append("### ThemeCard ").append(i + 1).append("\n");
+            sb.append("theme_name: ").append(theme.getThemeName()).append("\n");
+            sb.append("event_type: ").append(theme.getEventType()).append("\n");
+            sb.append("signal_side: ").append(theme.getSignalSide()).append("\n");
+            sb.append("signal_score: ").append(theme.getSignalScore()).append("\n");
+            sb.append("importance_level: ").append(theme.getImportanceLevel() != null ? theme.getImportanceLevel() : 0).append("\n");
+            sb.append("mapped_stock_count: ").append(theme.getMappedStockCount() != null ? theme.getMappedStockCount() : 0).append("\n");
+            sb.append("mapped_stocks: ").append(theme.getMappedStocks() != null ? theme.getMappedStocks() : "N/A").append("\n");
+            sb.append("source_name: ").append(theme.getSourceName() != null ? theme.getSourceName() : "N/A").append("\n");
+            sb.append("title: ").append(theme.getTitle() != null ? theme.getTitle() : "N/A").append("\n");
+            sb.append("summary: ").append(theme.getSummary() != null ? theme.getSummary() : "N/A").append("\n");
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String formatResonanceData(List<AReportResonanceCard> resonanceCards) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## ResonanceCandidates\n");
+        if (resonanceCards == null || resonanceCards.isEmpty()) {
+            sb.append("- none\n\n");
+            return sb.toString();
+        }
+        for (int i = 0; i < resonanceCards.size(); i++) {
+            AReportResonanceCard card = resonanceCards.get(i);
+            sb.append("### ResonanceCard ").append(i + 1).append("\n");
+            sb.append("stock_code: ").append(card.getStockCode()).append("\n");
+            sb.append("stock_name: ").append(card.getStockName()).append("\n");
+            sb.append("signal_side: ").append(card.getSignalSide()).append("\n");
+            sb.append("fusion_score: ").append(card.getFusionScore()).append("\n");
+            sb.append("fusion_level: ").append(card.getFusionLevel()).append("\n");
+            sb.append("notice_signal_score: ").append(card.getNoticeSignalScore()).append("\n");
+            sb.append("macro_signal_score: ").append(card.getMacroSignalScore()).append("\n");
+            sb.append("event_cluster_count: ").append(card.getEventClusterCount()).append("\n");
+            sb.append("support_notice_count: ").append(card.getSupportNoticeCount()).append("\n");
+            sb.append("macro_theme_name: ").append(card.getMacroThemeName() != null ? card.getMacroThemeName() : "N/A").append("\n");
+            sb.append("macro_event_type: ").append(card.getMacroEventType() != null ? card.getMacroEventType() : "N/A").append("\n");
+            sb.append("notice_event_type: ").append(card.getNoticeEventType() != null ? card.getNoticeEventType() : "N/A").append("\n");
+            sb.append("relation_reason: ").append(card.getRelationReason() != null ? card.getRelationReason() : "N/A").append("\n");
+            sb.append("notice_title: ").append(card.getNoticeTitle() != null ? card.getNoticeTitle() : "N/A").append("\n");
+            sb.append("macro_title: ").append(card.getMacroTitle() != null ? card.getMacroTitle() : "N/A").append("\n");
+            sb.append("macro_summary: ").append(card.getMacroSummary() != null ? card.getMacroSummary() : "N/A").append("\n");
+            sb.append("notice_analysis_hint: ").append(card.getNoticeAnalysisHint() != null ? card.getNoticeAnalysisHint() : "N/A").append("\n");
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     /**
@@ -830,78 +985,22 @@ public class AISummaryServiceImpl implements AISummaryService {
     }
 
     private String ensureAStockMarkdown(String markdown,
-                                        List<StockAlertDTO<AStockRss>> stockAlertList,
+                                        AReportFusionContext reportContext,
                                         String reportDate,
                                         boolean morning) {
         String cleaned = sanitizeModelOutput(markdown);
         if (cleaned.isBlank()
                 || !cleaned.startsWith("#")
-                || (!cleaned.contains("## 机会榜") && !cleaned.contains("## 风险榜"))) {
+                || !cleaned.contains("## 宏观主线")
+                || !cleaned.contains("## 共振标的")
+                || !cleaned.contains("## 机会榜")
+                || !cleaned.contains("## 风险榜")) {
             log.warn("A股 Markdown 输出不符合预期，使用降级模板。内容: {}", cleaned);
             return morning
-                    ? generateAMorningFallbackMarkdown(stockAlertList, reportDate)
-                    : generateEveningFallbackMarkdown(stockAlertList, reportDate);
+                    ? generateAMorningFallbackMarkdown(reportContext, reportDate)
+                    : generateEveningFallbackMarkdown(reportContext, reportDate);
         }
         return cleaned;
-    }
-
-    private AStockReportSections splitAStockReportSections(List<StockAlertDTO<AStockRss>> stockAlertList) {
-        List<StockAlertDTO<AStockRss>> opportunities = new ArrayList<>();
-        List<StockAlertDTO<AStockRss>> risks = new ArrayList<>();
-
-        if (stockAlertList == null) {
-            return new AStockReportSections(opportunities, risks);
-        }
-
-        for (StockAlertDTO<AStockRss> dto : stockAlertList) {
-            if (dto == null || dto.getStock() == null) {
-                continue;
-            }
-            if (isRiskAlert(dto)) {
-                if (risks.size() < A_STOCK_SECTION_LIMIT) {
-                    risks.add(dto);
-                }
-            } else if (opportunities.size() < A_STOCK_SECTION_LIMIT) {
-                opportunities.add(dto);
-            }
-
-            if (opportunities.size() >= A_STOCK_SECTION_LIMIT && risks.size() >= A_STOCK_SECTION_LIMIT) {
-                break;
-            }
-        }
-
-        return new AStockReportSections(opportunities, risks);
-    }
-
-    private boolean isRiskAlert(StockAlertDTO<AStockRss> dto) {
-        if (dto == null || dto.getStock() == null) {
-            return false;
-        }
-
-        AStockRss stock = dto.getStock();
-        if ("利空".equals(dto.getSignalSide())) {
-            return true;
-        }
-        if (containsAnyKeyword(stock.getEventType(), A_STOCK_RISK_EVENT_KEYWORDS)) {
-            return true;
-        }
-        if (containsAnyKeyword(stock.getTitle(), A_STOCK_RISK_TITLE_KEYWORDS)
-                || containsAnyKeyword(stock.getAnalysisHint(), A_STOCK_RISK_TITLE_KEYWORDS)) {
-            return true;
-        }
-
-        String stockName = stock.getStockName();
-        return stockName != null && stockName.toUpperCase(Locale.ROOT).contains("ST");
-    }
-
-    private boolean containsAnyKeyword(String text, List<String> keywords) {
-        if (text == null || text.isBlank() || keywords == null || keywords.isEmpty()) {
-            return false;
-        }
-        String normalized = text.toUpperCase(Locale.ROOT);
-        return keywords.stream()
-                .map(keyword -> keyword.toUpperCase(Locale.ROOT))
-                .anyMatch(normalized::contains);
     }
 
     private String indentMultiline(String text, String prefix) {
@@ -979,13 +1078,14 @@ public class AISummaryServiceImpl implements AISummaryService {
         return sb.toString();
     }
 
-    private String generateAMorningFallbackMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate) {
-        AStockReportSections sections = splitAStockReportSections(stockAlertList);
+    private String generateAMorningFallbackMarkdown(AReportFusionContext reportContext, String reportDate) {
         StringBuilder sb = new StringBuilder();
         sb.append("# 🌅 A股盘前异动雷达 | ").append(reportDate).append("\n\n");
-        sb.append("过去 24 小时内，系统完成了公告去噪、事件聚类和风险分流，以下标的是盘前最值得关注的机会与风险：\n\n");
-        appendAMorningSection(sb, "机会榜", "暂无达到阈值的机会事件", sections.opportunities(), false);
-        appendAMorningSection(sb, "风险榜", "暂无高优先级风险事件", sections.risks(), true);
+        sb.append("过去 24 小时内，系统完成了公告去噪、事件聚类、宏观主题聚合与风险分流，以下标的是盘前最值得关注的主线、共振与风险：\n\n");
+        appendMacroThemeSection(sb, reportContext.getMacroThemes());
+        appendResonanceSection(sb, reportContext.getResonanceCandidates(), true);
+        appendAMorningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), false);
+        appendAMorningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), true);
         sb.append("💡 AI 深度查股：\n");
         sb.append("想看上述股票的具体公告源？或者查询你的自选股？\n");
         sb.append("👉 请在群内直接发送：@A股分析专家 分析 [股票代码]\n\n");
@@ -1024,6 +1124,60 @@ public class AISummaryServiceImpl implements AISummaryService {
                     .append(title);
             if (tag != null && !tag.isEmpty()) {
                 sb.append(" 相关标题：[").append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
+            }
+            sb.append("\n\n");
+        }
+    }
+
+    private void appendMacroThemeSection(StringBuilder sb, List<MacroThemeEvent> macroThemes) {
+        sb.append("## 宏观主线\n\n");
+        if (macroThemes == null || macroThemes.isEmpty()) {
+            sb.append("<font color=\"comment\">暂无达到阈值的宏观主线</font>\n\n");
+            return;
+        }
+        for (int i = 0; i < Math.min(A_STOCK_SECTION_LIMIT, macroThemes.size()); i++) {
+            MacroThemeEvent theme = macroThemes.get(i);
+            String sideLabel = resolveMacroSideLabel(theme.getSignalSide());
+            String colorTag = resolveMacroColorTag(theme.getSignalSide(), safeInt(theme.getSignalScore()));
+            String level = resolveMacroSignalLevel(safeInt(theme.getSignalScore()));
+            sb.append("> ").append(i + 1).append(". ")
+                    .append(theme.getThemeName()).append(" | ")
+                    .append(defaultText(theme.getEventType(), "主题事件")).append("\n");
+            sb.append("> 🧭 主线方向：<font color=\"").append(colorTag).append("\">【")
+                    .append(sideLabel).append("】</font>\n");
+            sb.append("> 🎯 主题强度：<font color=\"").append(colorTag).append("\">")
+                    .append(safeInt(theme.getSignalScore())).append(" 分 (")
+                    .append(level).append("，关联 ")
+                    .append(theme.getMappedStockCount() != null ? theme.getMappedStockCount() : 0)
+                    .append(" 只映射标的)</font>\n");
+            sb.append("> 🧠 主线解读：").append(defaultText(theme.getTitle(), "暂无主题标题"));
+            if (isNotBlank(theme.getMappedStocks())) {
+                sb.append(" 关联标的[").append(truncate(theme.getMappedStocks(), 60)).append("]");
+            }
+            sb.append("\n\n");
+        }
+    }
+
+    private void appendResonanceSection(StringBuilder sb,
+                                        List<AReportResonanceCard> resonanceCards,
+                                        boolean morning) {
+        sb.append("## 共振标的\n\n");
+        if (resonanceCards == null || resonanceCards.isEmpty()) {
+            sb.append("<font color=\"comment\">暂无公告与主题共振标的</font>\n\n");
+            return;
+        }
+        for (int i = 0; i < Math.min(A_STOCK_SECTION_LIMIT, resonanceCards.size()); i++) {
+            AReportResonanceCard card = resonanceCards.get(i);
+            String stockCode = defaultText(card.getStockCode(), "未知");
+            String stockName = defaultText(card.getStockName(), stockCode);
+            sb.append("> ").append(i + 1).append(". ").append(stockName).append(" (").append(stockCode).append(") | ")
+                    .append(defaultText(card.getMacroThemeName(), "宏观主题")).append("\n");
+            sb.append("> 🔗 共振强度：<font color=\"").append(card.getColorTag()).append("\">")
+                    .append(card.getFusionScore()).append(" 分 (").append(card.getFusionLevel()).append(")</font>\n");
+            sb.append("> 🧠 ").append(morning ? "共振逻辑：" : "共振逻辑解码：")
+                    .append(defaultText(card.getNoticeTitle(), "暂无公告标题"));
+            if (isNotBlank(card.getMacroTitle())) {
+                sb.append(" + ").append(truncate(card.getMacroTitle(), 60));
             }
             sb.append("\n\n");
         }
@@ -1104,13 +1258,14 @@ public class AISummaryServiceImpl implements AISummaryService {
     /**
      * 生成A股盘后复盘降级 Markdown（当AI调用失败时使用）
      */
-    private String generateEveningFallbackMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate) {
-        AStockReportSections sections = splitAStockReportSections(stockAlertList);
+    private String generateEveningFallbackMarkdown(AReportFusionContext reportContext, String reportDate) {
         StringBuilder sb = new StringBuilder();
         sb.append("# 🌆 A股盘后情绪解码 | ").append(reportDate).append("\n\n");
-        sb.append("今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线：\n\n");
-        appendAEveningSection(sb, "机会榜", "暂无达到阈值的机会事件", sections.opportunities());
-        appendAEveningSection(sb, "风险榜", "暂无高优先级风险事件", sections.risks());
+        sb.append("今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线：\n\n");
+        appendMacroThemeSection(sb, reportContext.getMacroThemes());
+        appendResonanceSection(sb, reportContext.getResonanceCandidates(), false);
+        appendAEveningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts());
+        appendAEveningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts());
 
         sb.append("💡 持仓深度体检：\n");
         sb.append("今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n");
@@ -1162,7 +1317,69 @@ public class AISummaryServiceImpl implements AISummaryService {
         }
     }
 
-    private record AStockReportSections(List<StockAlertDTO<AStockRss>> opportunities,
-                                        List<StockAlertDTO<AStockRss>> risks) {
+    private String resolveMacroSignalLevel(int signalScore) {
+        if (signalScore >= 110) {
+            return "主线级";
+        }
+        if (signalScore >= 80) {
+            return "高优先级";
+        }
+        if (signalScore >= 60) {
+            return "边际催化";
+        }
+        return "观察";
+    }
+
+    private String resolveMacroColorTag(String signalSide, int signalScore) {
+        if ("利空".equals(signalSide)) {
+            return "warning";
+        }
+        if (signalScore >= 110) {
+            return "warning";
+        }
+        if (signalScore >= 80) {
+            return "info";
+        }
+        if (signalScore >= 60) {
+            return "success";
+        }
+        return "comment";
+    }
+
+    private String resolveMacroSideLabel(String signalSide) {
+        if ("利空".equals(signalSide)) {
+            return "利空";
+        }
+        if ("利多".equals(signalSide)) {
+            return "利多";
+        }
+        return "中性";
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private String defaultText(String value, String fallback) {
+        return isBlank(value) ? fallback : value;
+    }
+
+    private String truncate(String value, int limit) {
+        if (value == null || value.length() <= limit) {
+            return value;
+        }
+        return value.substring(0, limit) + "...";
+    }
+
+    private int sizeOf(List<?> list) {
+        return list == null ? 0 : list.size();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean isNotBlank(String value) {
+        return !isBlank(value);
     }
 }

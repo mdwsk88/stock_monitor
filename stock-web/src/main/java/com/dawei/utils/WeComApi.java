@@ -2,6 +2,8 @@ package com.dawei.utils;
 
 import com.dawei.entity.AStockMsg;
 import com.dawei.entity.USStockMsg;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +14,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +32,17 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class WeComApi {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final int WECOM_MARKDOWN_MAX_BYTES = 4096;
+    private static final int WECOM_MARKDOWN_SAFE_BYTES = 4000;
+    private static final int WECOM_MARKDOWN_SECTION_SPLIT_TARGET_BYTES = 3000;
+    private static final int WECOM_MARKDOWN_LINE_MAX_BYTES = 320;
+    private static final String MARKDOWN_TRUNCATION_NOTICE = "\n\n[内容过长，已截断]";
+    private static final List<String> COMMON_MARKDOWN_EMOJIS = List.of(
+            "🌅", "🌆", "🧭", "🎯", "🧠", "🔗", "📈", "⚠️", "⚠", "🔥", "💡", "👉", "📌",
+            "🏢", "📅", "📰", "🏷️", "🏷", "📊", "📎", "🗂️", "🗂", "🇨🇳", "️"
+    );
 
     // 美股 Webhook URL
     @Value("${WECOM_WEBHOOK_URL_US:}")
@@ -217,19 +232,33 @@ public class WeComApi {
         }
 
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            List<String> finalContents = prepareContentsForSend(content, messageType, marketType);
+            for (int i = 0; i < finalContents.size(); i++) {
+                String finalContent = finalContents.get(i);
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
 
-            Map<String, Object> contentBody = new HashMap<>();
-            contentBody.put("content", content);
+                Map<String, Object> contentBody = new HashMap<>();
+                contentBody.put("content", finalContent);
 
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("msgtype", messageType);
-            requestBody.put(messageType, contentBody);
+                Map<String, Object> requestBody = new HashMap<>();
+                requestBody.put("msgtype", messageType);
+                requestBody.put(messageType, contentBody);
 
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            String response = restTemplate.postForObject(webhookUrl, request, String.class);
-            log.info("企业微信消息发送成功（市场: {}，类型: {}），响应: {}", marketType, messageType, response);
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+                String response = restTemplate.postForObject(webhookUrl, request, String.class);
+                int responseErrCode = extractErrCode(response);
+                if (responseErrCode == 0) {
+                    log.info("企业微信消息发送成功（市场: {}，类型: {}，part={}/{}, chars={}，bytes={}），响应: {}",
+                            marketType, messageType, i + 1, finalContents.size(),
+                            finalContent.length(), utf8Length(finalContent), response);
+                    continue;
+                }
+                log.error("企业微信消息发送失败（市场: {}，类型: {}，part={}/{}, chars={}，bytes={}，errcode={}），响应: {}",
+                        marketType, messageType, i + 1, finalContents.size(),
+                        finalContent.length(), utf8Length(finalContent), responseErrCode, response);
+                return false;
+            }
             return true;
         } catch (Exception e) {
             log.error("企业微信消息发送失败（市场: {}，类型: {}）: {}", marketType, messageType, e.getMessage(), e);
@@ -250,16 +279,30 @@ public class WeComApi {
      * @param aStockMsg
      */
     public String formatAStockInfo(AStockMsg aStockMsg) {
-        return "<font color=\"info\">📌 代码：</font>" + aStockMsg.getStockCode() + "\n" +
-               "<font color=\"info\">🏢 名称：</font>" + aStockMsg.getStockName() + "\n" +
-               "<font color=\"comment\">📅 时间：</font>" + aStockMsg.getPubDate() + "\n" +
-               "<font color=\"comment\">📰 标题：</font>" + aStockMsg.getTitle() + "\n" +
-               "<font color=\"warning\">🏷️ 类型：</font>" + aStockMsg.getTag() + "\n" +
-               "<font color=\"comment\">🧭 事件：</font>" + aStockMsg.getEventType() + " / " + aStockMsg.getSignalSide() + "\n" +
-               "<font color=\"comment\">🎯 评分：</font>" + aStockMsg.getSignalScore() + " 分\n" +
-               "<font color=\"comment\">📊 支撑：</font>24小时公告=" + aStockMsg.getCounts24Hour() + "条; " +
-               "3天内公告=" + aStockMsg.getCounts3Day() + "条; " +
-               "1周内公告=" + aStockMsg.getCounts1Week() + "条";
+        StringBuilder builder = new StringBuilder()
+                .append("<font color=\"info\">📌 代码：</font>").append(aStockMsg.getStockCode()).append("\n")
+                .append("<font color=\"info\">🏢 名称：</font>").append(aStockMsg.getStockName()).append("\n")
+                .append("<font color=\"comment\">📅 时间：</font>").append(aStockMsg.getPubDate()).append("\n")
+                .append("<font color=\"comment\">📰 标题：</font>").append(aStockMsg.getTitle()).append("\n")
+                .append("<font color=\"warning\">🏷️ 类型：</font>").append(aStockMsg.getTag()).append("\n")
+                .append("<font color=\"comment\">🧭 事件：</font>").append(aStockMsg.getEventType())
+                .append(" / ").append(aStockMsg.getSignalSide()).append("\n")
+                .append("<font color=\"comment\">🎯 评分：</font>").append(aStockMsg.getSignalScore()).append(" 分\n");
+
+        if (aStockMsg.getBatchNoticeCount() != null && aStockMsg.getBatchNoticeCount() > 1) {
+            builder.append("<font color=\"comment\">📎 本轮命中：</font>")
+                    .append(aStockMsg.getBatchNoticeCount()).append("条\n");
+        }
+        if (aStockMsg.getRelatedTitles() != null && !aStockMsg.getRelatedTitles().isBlank()) {
+            builder.append("<font color=\"comment\">🗂️ 其他标题：</font>")
+                    .append(aStockMsg.getRelatedTitles()).append("\n");
+        }
+
+        builder.append("<font color=\"comment\">📊 支撑：</font>24小时公告=")
+                .append(aStockMsg.getCounts24Hour()).append("条; ")
+                .append("3天内公告=").append(aStockMsg.getCounts3Day()).append("条; ")
+                .append("1周内公告=").append(aStockMsg.getCounts1Week()).append("条");
+        return builder.toString();
     }
 
     /**
@@ -275,5 +318,321 @@ public class WeComApi {
         return stocks.stream()
                 .map(this::formatAStockInfo)
                 .collect(Collectors.joining("\n\n----------\n\n"));
+    }
+
+    private List<String> prepareContentsForSend(String content, String messageType, MarketType marketType) {
+        String safeContent = content == null ? "" : content;
+        if (!"markdown".equalsIgnoreCase(messageType)) {
+            return List.of(safeContent);
+        }
+        int originalBytes = utf8Length(safeContent);
+        List<String> preparedParts = splitMarkdownForWeCom(safeContent).stream()
+                .map(this::shrinkMarkdownForWeCom)
+                .toList();
+        if (preparedParts.size() > 1) {
+            log.warn("企业微信 Markdown 已分段发送（市场: {}），parts={}，originalChars={}，originalBytes={}",
+                    marketType, preparedParts.size(), safeContent.length(), originalBytes);
+        }
+        int finalBytes = preparedParts.stream().mapToInt(this::utf8Length).sum();
+        int finalChars = preparedParts.stream().mapToInt(String::length).sum();
+        if (originalBytes > WECOM_MARKDOWN_MAX_BYTES
+                || preparedParts.size() > 1
+                || preparedParts.stream().noneMatch(safeContent::equals)) {
+            log.warn("企业微信 Markdown 已压缩（市场: {}），chars {} -> {}，bytes {} -> {}",
+                    marketType, safeContent.length(), finalChars, originalBytes, finalBytes);
+        }
+        return preparedParts;
+    }
+
+    private String shrinkMarkdownForWeCom(String content) {
+        String normalized = normalizeMarkdown(content);
+        if (utf8Length(normalized) <= WECOM_MARKDOWN_MAX_BYTES) {
+            return normalized;
+        }
+
+        String compacted = collapseBlankLines(normalized);
+        compacted = stripFontTags(compacted);
+        compacted = stripCommonEmojis(compacted);
+        compacted = stripTrailingInteractiveBlock(compacted);
+        compacted = compactVisualSpacing(compacted);
+        if (utf8Length(compacted) <= WECOM_MARKDOWN_MAX_BYTES) {
+            return compacted;
+        }
+
+        return truncateMarkdownByBytes(compacted, WECOM_MARKDOWN_SAFE_BYTES);
+    }
+
+    private List<String> splitMarkdownForWeCom(String content) {
+        String normalized = normalizeMarkdown(content);
+        if (utf8Length(normalized) <= WECOM_MARKDOWN_MAX_BYTES) {
+            return List.of(normalized);
+        }
+
+        MarkdownDocument document = parseMarkdownDocument(normalized);
+        if (document.sections().size() < 2) {
+            return List.of(normalized);
+        }
+
+        List<List<MarkdownSection>> groups = new ArrayList<>();
+        List<MarkdownSection> currentGroup = new ArrayList<>();
+        int currentBytes = utf8Length(renderMarkdownPart(document, List.of(), 1, 1));
+        for (MarkdownSection section : document.sections()) {
+            int sectionBytes = utf8Length(renderSection(section));
+            if (!currentGroup.isEmpty()
+                    && currentBytes + sectionBytes > WECOM_MARKDOWN_SECTION_SPLIT_TARGET_BYTES) {
+                groups.add(new ArrayList<>(currentGroup));
+                currentGroup.clear();
+                currentBytes = utf8Length(renderMarkdownPart(document, List.of(), groups.size() + 1, groups.size() + 1));
+            }
+            currentGroup.add(section);
+            currentBytes += sectionBytes;
+        }
+        if (!currentGroup.isEmpty()) {
+            groups.add(currentGroup);
+        }
+        if (groups.size() <= 1) {
+            return List.of(normalized);
+        }
+
+        List<String> parts = new ArrayList<>();
+        for (int i = 0; i < groups.size(); i++) {
+            parts.add(renderMarkdownPart(document, groups.get(i), i + 1, groups.size()));
+        }
+        return parts;
+    }
+
+    private String normalizeMarkdown(String content) {
+        return content.replace("\r\n", "\n").replace('\r', '\n').trim();
+    }
+
+    private String collapseBlankLines(String content) {
+        return content.replaceAll("\n{3,}", "\n\n");
+    }
+
+    private String stripFontTags(String content) {
+        return content
+                .replaceAll("<font color=\"[^\"]+\">", "")
+                .replace("</font>", "");
+    }
+
+    private String stripCommonEmojis(String content) {
+        String stripped = content;
+        for (String emoji : COMMON_MARKDOWN_EMOJIS) {
+            stripped = stripped.replace(emoji, "");
+        }
+        return stripped;
+    }
+
+    private String stripTrailingInteractiveBlock(String content) {
+        List<String> keptLines = new ArrayList<>();
+        boolean dropTail = false;
+        for (String line : content.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("💡")
+                    || trimmed.startsWith("AI 深度查股")
+                    || trimmed.startsWith("持仓深度体检")
+                    || trimmed.startsWith("👉")
+                    || trimmed.contains("免责声明")) {
+                dropTail = true;
+            }
+            if (!dropTail) {
+                keptLines.add(line);
+            }
+        }
+        return trimTrailingBlankLines(String.join("\n", keptLines));
+    }
+
+    private String compactVisualSpacing(String content) {
+        return trimTrailingBlankLines(content
+                .replaceAll("(?m)^>\\s{2,}", "> ")
+                .replaceAll("(?m)^\\s{2,}", "")
+                .replaceAll("[ \t]{2,}", " "));
+    }
+
+    private String truncateMarkdownByBytes(String content, int maxBytes) {
+        String notice = MARKDOWN_TRUNCATION_NOTICE;
+        int noticeBytes = utf8Length(notice);
+        int budget = Math.max(0, maxBytes - noticeBytes);
+
+        List<String> lines = List.of(content.split("\n", -1));
+        StringBuilder builder = new StringBuilder();
+        boolean truncated = false;
+        for (String rawLine : lines) {
+            String line = truncateLineByBytes(rawLine, WECOM_MARKDOWN_LINE_MAX_BYTES);
+            String candidate = builder.isEmpty() ? line : builder + "\n" + line;
+            if (utf8Length(candidate) > budget) {
+                truncated = true;
+                break;
+            }
+            builder.setLength(0);
+            builder.append(candidate);
+        }
+
+        String result = trimTrailingBlankLines(builder.toString());
+        if (!truncated && utf8Length(result) <= WECOM_MARKDOWN_MAX_BYTES) {
+            return result;
+        }
+        result = appendTruncationNotice(result, notice, maxBytes);
+        if (utf8Length(result) <= WECOM_MARKDOWN_MAX_BYTES) {
+            return result;
+        }
+        return trimToBytes(result, WECOM_MARKDOWN_MAX_BYTES);
+    }
+
+    private String truncateLineByBytes(String line, int maxBytes) {
+        if (utf8Length(line) <= maxBytes) {
+            return line;
+        }
+        return trimToBytes(line, maxBytes - utf8Length("...")) + "...";
+    }
+
+    private String appendTruncationNotice(String content, String notice, int maxBytes) {
+        String base = trimTrailingBlankLines(content);
+        while (!base.isEmpty() && utf8Length(base + notice) > maxBytes) {
+            int cut = base.lastIndexOf('\n');
+            if (cut < 0) {
+                base = trimToBytes(base, Math.max(0, maxBytes - utf8Length(notice)));
+                break;
+            }
+            base = trimTrailingBlankLines(base.substring(0, cut));
+        }
+        return trimTrailingBlankLines(base) + notice;
+    }
+
+    private String trimToBytes(String text, int maxBytes) {
+        if (maxBytes <= 0 || text.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        int bytes = 0;
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            String asString = new String(Character.toChars(codePoint));
+            int cpBytes = utf8Length(asString);
+            if (bytes + cpBytes > maxBytes) {
+                break;
+            }
+            builder.append(asString);
+            bytes += cpBytes;
+            i += Character.charCount(codePoint);
+        }
+        return trimTrailingBlankLines(builder.toString());
+    }
+
+    private String trimTrailingBlankLines(String content) {
+        return content.replaceAll("(\\n\\s*)+$", "").trim();
+    }
+
+    private MarkdownDocument parseMarkdownDocument(String content) {
+        List<String> lines = List.of(content.split("\n", -1));
+        String title = "";
+        int index = 0;
+        while (index < lines.size()) {
+            String line = lines.get(index).trim();
+            if (!line.isEmpty()) {
+                title = line;
+                index++;
+                break;
+            }
+            index++;
+        }
+
+        List<String> introLines = new ArrayList<>();
+        List<MarkdownSection> sections = new ArrayList<>();
+        String currentHeading = null;
+        List<String> currentBody = new ArrayList<>();
+
+        for (; index < lines.size(); index++) {
+            String line = lines.get(index);
+            if (line.startsWith("## ")) {
+                if (currentHeading != null) {
+                    sections.add(new MarkdownSection(currentHeading, trimLines(currentBody)));
+                    currentBody = new ArrayList<>();
+                }
+                currentHeading = line.trim();
+                continue;
+            }
+            if (currentHeading == null) {
+                introLines.add(line);
+            } else {
+                currentBody.add(line);
+            }
+        }
+        if (currentHeading != null) {
+            sections.add(new MarkdownSection(currentHeading, trimLines(currentBody)));
+        }
+        return new MarkdownDocument(title, trimLines(introLines), sections);
+    }
+
+    private List<String> trimLines(List<String> lines) {
+        List<String> result = new ArrayList<>(lines);
+        while (!result.isEmpty() && result.get(0).trim().isEmpty()) {
+            result.remove(0);
+        }
+        while (!result.isEmpty() && result.get(result.size() - 1).trim().isEmpty()) {
+            result.remove(result.size() - 1);
+        }
+        return result;
+    }
+
+    private String renderMarkdownPart(MarkdownDocument document,
+                                      List<MarkdownSection> sections,
+                                      int partIndex,
+                                      int totalParts) {
+        StringBuilder builder = new StringBuilder();
+        if (!document.title().isBlank()) {
+            builder.append(appendPartSuffix(document.title(), partIndex, totalParts)).append("\n\n");
+        }
+        if (partIndex == 1 && !document.introLines().isEmpty()) {
+            builder.append(String.join("\n", document.introLines())).append("\n\n");
+        } else if (partIndex > 1) {
+            builder.append("以下为续篇：\n\n");
+        }
+        for (MarkdownSection section : sections) {
+            builder.append(renderSection(section)).append("\n\n");
+        }
+        return trimTrailingBlankLines(builder.toString());
+    }
+
+    private String renderSection(MarkdownSection section) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(section.heading()).append("\n\n");
+        if (!section.bodyLines().isEmpty()) {
+            builder.append(String.join("\n", section.bodyLines()));
+        }
+        return trimTrailingBlankLines(builder.toString());
+    }
+
+    private String appendPartSuffix(String title, int partIndex, int totalParts) {
+        if (totalParts <= 1 || title.isBlank()) {
+            return title;
+        }
+        return title + "（" + partIndex + "/" + totalParts + "）";
+    }
+
+    private int extractErrCode(String response) {
+        if (response == null || response.isBlank()) {
+            return -1;
+        }
+        try {
+            JsonNode jsonNode = OBJECT_MAPPER.readTree(response);
+            return jsonNode.path("errcode").asInt(-1);
+        } catch (Exception e) {
+            log.warn("企业微信响应解析失败，按发送失败处理。response={}", response);
+            return -1;
+        }
+    }
+
+    private int utf8Length(String content) {
+        return content == null ? 0 : content.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private record MarkdownDocument(String title,
+                                    List<String> introLines,
+                                    List<MarkdownSection> sections) {
+    }
+
+    private record MarkdownSection(String heading,
+                                   List<String> bodyLines) {
     }
 }

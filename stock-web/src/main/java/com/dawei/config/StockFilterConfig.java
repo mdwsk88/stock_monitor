@@ -46,6 +46,21 @@ public class StockFilterConfig {
     private int aClusterWindowMinutes = 15;
 
     /**
+     * 宏观影子榜最低信号分
+     */
+    private int macroShadowSignalThreshold = 75;
+
+    /**
+     * 每个宏观源单次抓取的记录上限
+     */
+    private int macroFetchLimitPerSource = 20;
+
+    /**
+     * 宏观主题聚类窗口（分钟）
+     */
+    private int macroClusterWindowMinutes = 120;
+
+    /**
      * 黑名单关键词列表 - 用于过滤"行政流水账"类噪音公告
      */
     private List<String> blacklistKeywords = Arrays.asList(

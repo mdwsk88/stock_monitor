@@ -1,13 +1,16 @@
 package com.dawei;
 
 import com.dawei.service.RssService;
+import com.dawei.service.MacroNewsService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -30,6 +33,9 @@ class StockSchedulerTest {
 
     @Mock
     private RssService rssService;
+
+    @Mock
+    private MacroNewsService macroNewsService;
 
     @InjectMocks
     private StockScheduler stockScheduler;
@@ -111,6 +117,24 @@ class StockSchedulerTest {
         log.info("✅ 周末巡逻任务 Cron 表达式验证通过: {}", cron);
     }
 
+    @Test
+    void testMacroHighFreqCronExpression() throws NoSuchMethodException {
+        Method method = StockScheduler.class.getMethod("fetchMacroNewsHighFreq");
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+
+        assertNotNull(scheduled);
+        assertEquals("0 0/10 8-22 * * *", scheduled.cron());
+    }
+
+    @Test
+    void testMacroLowFreqCronExpression() throws NoSuchMethodException {
+        Method method = StockScheduler.class.getMethod("fetchMacroNewsLowFreq");
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+
+        assertNotNull(scheduled);
+        assertEquals("0 0 23,0,1,2,3,4,5,6,7 * * *", scheduled.cron());
+    }
+
     // ==================== 任务执行测试 ====================
 
     @Test
@@ -125,6 +149,16 @@ class StockSchedulerTest {
         verify(rssService, times(1)).fetchAndSaveAStockNotices();
 
         log.info("✅ A股高频任务执行测试通过");
+    }
+
+    @Test
+    void testAStockHighFreqRetriesOnceOnRecoverableDbError() throws Exception {
+        doThrow(new RecoverableDataAccessException("Communications link failure") {
+        }).doNothing().when(rssService).fetchAndSaveAStockNotices();
+
+        assertDoesNotThrow(() -> stockScheduler.getAStockInfoHighFreq());
+
+        verify(rssService, times(2)).fetchAndSaveAStockNotices();
     }
 
     @Test
@@ -175,14 +209,95 @@ class StockSchedulerTest {
 
         doNothing().when(rssService).displayRss();
         doNothing().when(rssService).fetchAndSaveAStockNotices();
+        when(macroNewsService.fetchAndSaveMacroNews()).thenReturn(emptyFetchSummary());
 
         assertDoesNotThrow(() -> stockScheduler.weekendLowFreqMonitor(),
             "周末巡逻任务执行不应抛出异常");
 
         verify(rssService, times(1)).displayRss();
         verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
 
         log.info("✅ 周末巡逻任务执行测试通过");
+    }
+
+    @Test
+    void testMacroHighFreqExecution() throws Exception {
+        when(macroNewsService.fetchAndSaveMacroNews()).thenReturn(emptyFetchSummary());
+
+        assertDoesNotThrow(() -> stockScheduler.fetchMacroNewsHighFreq());
+
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+    }
+
+    @Test
+    void testMacroHighFreqRetriesOnceOnRecoverableDbError() throws Exception {
+        when(macroNewsService.fetchAndSaveMacroNews())
+                .thenThrow(new RecoverableDataAccessException("Communications link failure") {
+                })
+                .thenReturn(emptyFetchSummary());
+
+        assertDoesNotThrow(() -> stockScheduler.fetchMacroNewsHighFreq());
+
+        verify(macroNewsService, times(2)).fetchAndSaveMacroNews();
+    }
+
+    @Test
+    void testMacroLowFreqExecution() throws Exception {
+        when(macroNewsService.fetchAndSaveMacroNews()).thenReturn(emptyFetchSummary());
+
+        assertDoesNotThrow(() -> stockScheduler.fetchMacroNewsLowFreq());
+
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+    }
+
+    @Test
+    void testUSHighFreqSkippedWhenRuntimeDisabled() throws Exception {
+        ReflectionTestUtils.setField(stockScheduler, "usRuntimeEnabled", false);
+
+        assertDoesNotThrow(() -> stockScheduler.getUSStockInfoHighFreq());
+
+        verify(rssService, never()).displayRss();
+    }
+
+    @Test
+    void testUSLowFreqSkippedWhenRuntimeDisabled() throws Exception {
+        ReflectionTestUtils.setField(stockScheduler, "usRuntimeEnabled", false);
+
+        assertDoesNotThrow(() -> stockScheduler.getUSStockInfoLowFreq());
+
+        verify(rssService, never()).displayRss();
+    }
+
+    @Test
+    void testWeekendMonitorSkipsUSWhenRuntimeDisabled() throws Exception {
+        ReflectionTestUtils.setField(stockScheduler, "usRuntimeEnabled", false);
+        doNothing().when(rssService).fetchAndSaveAStockNotices();
+        when(macroNewsService.fetchAndSaveMacroNews()).thenReturn(emptyFetchSummary());
+
+        assertDoesNotThrow(() -> stockScheduler.weekendLowFreqMonitor());
+
+        verify(rssService, never()).displayRss();
+        verify(rssService, times(1)).fetchAndSaveAStockNotices();
+        verify(macroNewsService, times(1)).fetchAndSaveMacroNews();
+    }
+
+    @Test
+    void testAStockHighFreqSkippedWhenSchedulerDisabled() throws Exception {
+        ReflectionTestUtils.setField(stockScheduler, "schedulerEnabled", false);
+
+        assertDoesNotThrow(() -> stockScheduler.getAStockInfoHighFreq());
+
+        verifyNoInteractions(rssService);
+    }
+
+    @Test
+    void testMacroHighFreqSkippedWhenSchedulerDisabled() throws Exception {
+        ReflectionTestUtils.setField(stockScheduler, "schedulerEnabled", false);
+
+        assertDoesNotThrow(() -> stockScheduler.fetchMacroNewsHighFreq());
+
+        verifyNoInteractions(macroNewsService);
     }
 
     // ==================== Cron 表达式解析测试 ====================
@@ -314,7 +429,9 @@ class StockSchedulerTest {
             "getAStockInfoLowFreq",
             "getUSStockInfoHighFreq",
             "getUSStockInfoLowFreq",
-            "weekendLowFreqMonitor"
+            "weekendLowFreqMonitor",
+            "fetchMacroNewsHighFreq",
+            "fetchMacroNewsLowFreq"
         };
 
         for (String methodName : expectedMethods) {
@@ -341,5 +458,9 @@ class StockSchedulerTest {
             "StockScheduler 应该有 @EnableScheduling 注解");
 
         log.info("✅ Scheduler 类注解验证通过");
+    }
+
+    private MacroNewsService.FetchSummary emptyFetchSummary() {
+        return new MacroNewsService.FetchSummary();
     }
 }

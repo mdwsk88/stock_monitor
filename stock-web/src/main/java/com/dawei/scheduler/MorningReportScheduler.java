@@ -1,8 +1,10 @@
 package com.dawei.scheduler;
 
+import com.dawei.entity.AReportFusionContext;
 import com.dawei.entity.AStockRss;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
+import com.dawei.service.AReportFusionService;
 import com.dawei.service.AISummaryService;
 import com.dawei.service.StockRankService;
 import com.dawei.utils.WeComApi;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -27,19 +30,34 @@ import java.util.List;
 public class MorningReportScheduler {
 
     private final StockRankService stockRankService;
+    private final AReportFusionService aReportFusionService;
     private final AISummaryService aiSummaryService;
     private final WeComApi weComApi;
     @Value("${stock.push.us-enabled:false}")
     private boolean usPushEnabled;
+    @Value("${stock.runtime.scheduler-enabled:true}")
+    private boolean schedulerEnabled;
 
     private static final int US_TOP_N = 5;
     private static final int A_TOP_N = 8;
+    private static final int A_MACRO_THEME_LIMIT = 3;
+    private static final int A_RESONANCE_LIMIT = 3;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final LocalTime A_MORNING_WINDOW_START = LocalTime.of(8, 0);
+    private static final LocalTime A_MORNING_WINDOW_END = LocalTime.of(9, 40);
+    private static final LocalTime A_EVENING_WINDOW_START = LocalTime.of(15, 0);
+    private static final LocalTime A_EVENING_WINDOW_END = LocalTime.of(16, 30);
+    private static final LocalTime US_MORNING_WINDOW_START = LocalTime.of(7, 0);
+    private static final LocalTime US_MORNING_WINDOW_END = LocalTime.of(9, 0);
+    private static final LocalTime US_EVENING_WINDOW_START = LocalTime.of(20, 0);
+    private static final LocalTime US_EVENING_WINDOW_END = LocalTime.of(21, 30);
 
-    public MorningReportScheduler(StockRankService stockRankService, 
-                                   AISummaryService aiSummaryService, 
+    public MorningReportScheduler(StockRankService stockRankService,
+                                   AReportFusionService aReportFusionService,
+                                   AISummaryService aiSummaryService,
                                    WeComApi weComApi) {
         this.stockRankService = stockRankService;
+        this.aReportFusionService = aReportFusionService;
         this.aiSummaryService = aiSummaryService;
         this.weComApi = weComApi;
     }
@@ -54,6 +72,9 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 7 * * ?")
     public void pushUSMorningReport() {
+        if (skipScheduledRuntime("美股早报（隔夜复盘）")) {
+            return;
+        }
         runUSMorningReport(false);
     }
 
@@ -66,6 +87,9 @@ public class MorningReportScheduler {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
+        if (shouldSkipScheduledWindow(now, manualTrigger, US_MORNING_WINDOW_START, US_MORNING_WINDOW_END, "美股早报（隔夜复盘）")) {
+            return;
+        }
         String today = now.format(DATE_FORMATTER);
         log.info("【美股早报（隔夜复盘）】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
@@ -112,6 +136,9 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 8 * * ?")
     public void pushAMorningReport() {
+        if (skipScheduledRuntime("A股盘前早报")) {
+            return;
+        }
         runAMorningReport(false);
     }
 
@@ -128,6 +155,9 @@ public class MorningReportScheduler {
             log.info("【A股盘前早报】今天是{}，股市休市，静默处理不发送早报", dayOfWeek);
             return;
         }
+        if (shouldSkipScheduledWindow(now, manualTrigger, A_MORNING_WINDOW_START, A_MORNING_WINDOW_END, "A股盘前早报")) {
+            return;
+        }
         
         String today = now.format(DATE_FORMATTER);
         log.info("【A股盘前早报】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
@@ -138,23 +168,33 @@ public class MorningReportScheduler {
             LocalDateTime endTime = now;
             log.info("【A股盘前早报】数据提取范围: {} 至 {}", startTime, endTime);
             
-            // 1. 查询指定时间范围内A股公告候选股票（包含频次统计）
-            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(A_TOP_N, startTime, endTime);
+            AReportFusionContext reportContext = aReportFusionService.buildContext(
+                    startTime,
+                    endTime,
+                    A_TOP_N,
+                    A_MACRO_THEME_LIMIT,
+                    A_RESONANCE_LIMIT
+            );
+            log.info("【A股盘前早报】融合上下文: 公告候选={}，宏观主题={}，共振={}",
+                    reportContext.getAlertCount(),
+                    reportContext.getMacroThemeCount(),
+                    reportContext.getResonanceCount());
 
-            if (topStocks.isEmpty()) {
-                log.warn("【A股盘前早报】过去24小时内无A股公告数据");
+            if (reportContext.isEmpty()) {
+                log.warn("【A股盘前早报】过去24小时内无A股公告或宏观主题数据");
                 String noDataMsg = buildNoDataMessage("A股", today);
                 weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.A);
                 return;
             }
 
-            // 2. 使用AI生成完整的企业微信 Markdown 消息（新模板格式）
-            String markdownMessage = aiSummaryService.generateAMorningReportMarkdown(topStocks, today);
+            String markdownMessage = aiSummaryService.generateAMorningReportMarkdown(reportContext, today);
 
-            // 3. 直接推送AI生成的消息
             weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.A);
 
-            log.info("【A股盘前早报】推送成功，共 {} 只股票", topStocks.size());
+            log.info("【A股盘前早报】推送成功，公告候选={}，宏观主题={}，共振={}",
+                    reportContext.getAlertCount(),
+                    reportContext.getMacroThemeCount(),
+                    reportContext.getResonanceCount());
 
         } catch (Exception e) {
             log.error("【A股盘前早报】执行失败: {}", e.getMessage(), e);
@@ -175,6 +215,9 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 15 * * ?")
     public void pushAEveningReport() {
+        if (skipScheduledRuntime("A股盘后复盘")) {
+            return;
+        }
         runAEveningReport(false);
     }
 
@@ -191,6 +234,9 @@ public class MorningReportScheduler {
             log.info("【A股盘后复盘】今天是{}，股市休市，静默处理不发送复盘", dayOfWeek);
             return;
         }
+        if (shouldSkipScheduledWindow(now, manualTrigger, A_EVENING_WINDOW_START, A_EVENING_WINDOW_END, "A股盘后复盘")) {
+            return;
+        }
         
         String today = now.format(DATE_FORMATTER);
         log.info("【A股盘后复盘】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
@@ -201,23 +247,33 @@ public class MorningReportScheduler {
             LocalDateTime endTime = now.withHour(15).withMinute(0).withSecond(0);
             log.info("【A股盘后复盘】数据提取范围: {} 至 {}", startTime, endTime);
             
-            // 1. 查询指定时间范围内A股公告候选股票（包含频次统计）
-            List<StockAlertDTO<AStockRss>> topStocks = stockRankService.getATopNStocksWithFrequency(A_TOP_N, startTime, endTime);
+            AReportFusionContext reportContext = aReportFusionService.buildContext(
+                    startTime,
+                    endTime,
+                    A_TOP_N,
+                    A_MACRO_THEME_LIMIT,
+                    A_RESONANCE_LIMIT
+            );
+            log.info("【A股盘后复盘】融合上下文: 公告候选={}，宏观主题={}，共振={}",
+                    reportContext.getAlertCount(),
+                    reportContext.getMacroThemeCount(),
+                    reportContext.getResonanceCount());
 
-            if (topStocks.isEmpty()) {
-                log.warn("【A股盘后复盘】过去24小时内无A股公告数据");
+            if (reportContext.isEmpty()) {
+                log.warn("【A股盘后复盘】日内无A股公告或宏观主题数据");
                 String noDataMsg = buildAStockNoDataEveningMessage(today);
                 weComApi.sendMarkdownMessageAsync(noDataMsg, WeComApi.MarketType.A);
                 return;
             }
 
-            // 2. 使用AI生成完整的盘后复盘 Markdown 消息（晚间复盘模板）
-            String markdownMessage = aiSummaryService.generateAEveningReportMarkdown(topStocks, today);
+            String markdownMessage = aiSummaryService.generateAEveningReportMarkdown(reportContext, today);
 
-            // 3. 直接推送AI生成的消息
             weComApi.sendMarkdownMessageAsync(markdownMessage, WeComApi.MarketType.A);
 
-            log.info("【A股盘后复盘】推送成功，共 {} 只股票", topStocks.size());
+            log.info("【A股盘后复盘】推送成功，公告候选={}，宏观主题={}，共振={}",
+                    reportContext.getAlertCount(),
+                    reportContext.getMacroThemeCount(),
+                    reportContext.getResonanceCount());
 
         } catch (Exception e) {
             log.error("【A股盘后复盘】执行失败: {}", e.getMessage(), e);
@@ -236,6 +292,9 @@ public class MorningReportScheduler {
      */
     @Scheduled(cron = "0 30 20 * * ?")
     public void pushUSEveningReport() {
+        if (skipScheduledRuntime("美股夜报（盘前预警）")) {
+            return;
+        }
         runUSEveningReport(false);
     }
 
@@ -248,6 +307,9 @@ public class MorningReportScheduler {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
+        if (shouldSkipScheduledWindow(now, manualTrigger, US_EVENING_WINDOW_START, US_EVENING_WINDOW_END, "美股夜报（盘前预警）")) {
+            return;
+        }
         String today = now.format(DATE_FORMATTER);
         log.info("【美股夜报（盘前预警）】开始执行，日期: {}，触发方式: {}", today, manualTrigger ? "手动" : "定时");
 
@@ -284,6 +346,34 @@ public class MorningReportScheduler {
 
     public boolean isUsPushEnabled() {
         return usPushEnabled;
+    }
+
+    private boolean skipScheduledRuntime(String jobName) {
+        if (schedulerEnabled) {
+            return false;
+        }
+        log.info("【{}】定时任务总开关已关闭，跳过执行", jobName);
+        return true;
+    }
+
+    static boolean isWithinExecutionWindow(LocalDateTime now, LocalTime windowStart, LocalTime windowEnd) {
+        LocalTime current = now.toLocalTime();
+        return !current.isBefore(windowStart) && !current.isAfter(windowEnd);
+    }
+
+    private boolean shouldSkipScheduledWindow(LocalDateTime now,
+                                              boolean manualTrigger,
+                                              LocalTime windowStart,
+                                              LocalTime windowEnd,
+                                              String jobName) {
+        if (manualTrigger) {
+            return false;
+        }
+        if (isWithinExecutionWindow(now, windowStart, windowEnd)) {
+            return false;
+        }
+        log.warn("【{}】当前时间 {} 不在定时执行窗口 {} - {} 内，跳过过期补跑", jobName, now.toLocalTime(), windowStart, windowEnd);
+        return true;
     }
 
     private boolean skipUSPush(String reportName) {

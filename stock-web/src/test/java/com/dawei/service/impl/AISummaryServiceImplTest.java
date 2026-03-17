@@ -1,6 +1,9 @@
 package com.dawei.service.impl;
 
+import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.AReportResonanceCard;
 import com.dawei.entity.AStockRss;
+import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +64,14 @@ class AISummaryServiceImplTest {
                 ```markdown
                 # 🌅 A股盘前异动雷达 | 2026-03-15
 
+                ## 宏观主线
+
+                > 1. 算力 | 政策扶持
+
+                ## 共振标的
+
+                > 1. 平安银行 (000001) | 算力
+
                 ## 机会榜
 
                 > 1. 平安银行 (000001) | 🇨🇳 A股
@@ -73,7 +84,7 @@ class AISummaryServiceImplTest {
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
 
         String markdown = aiSummaryService.generateAMorningReportMarkdown(
-                List.of(buildOpportunityAlert(), buildRiskAlert()),
+                buildFusionContext(),
                 "2026-03-15"
         );
 
@@ -82,8 +93,14 @@ class AISummaryServiceImplTest {
 
         assertFalse(markdown.contains("```"));
         assertTrue(markdown.startsWith("# 🌅 A股盘前异动雷达 | 2026-03-15"));
+        assertTrue(promptText.contains("## MacroThemeCandidates"));
+        assertTrue(promptText.contains("## ResonanceCandidates"));
         assertTrue(promptText.contains("## OpportunityCandidates"));
         assertTrue(promptText.contains("## RiskCandidates"));
+        assertTrue(promptText.contains("theme_name: 算力"));
+        assertTrue(promptText.contains("mapped_stock_count: 3"));
+        assertTrue(promptText.contains("fusion_score: 136"));
+        assertTrue(promptText.contains("macro_theme_name: 算力"));
         assertTrue(promptText.contains("### EventCard 1"));
         assertTrue(promptText.contains("signal_score: 118"));
         assertTrue(promptText.contains("signal_level: 主线级"));
@@ -104,14 +121,18 @@ class AISummaryServiceImplTest {
         when(callResponseSpec.content()).thenReturn("平安银行偏利多，关注盘前表现");
 
         String markdown = aiSummaryService.generateAMorningReportMarkdown(
-                List.of(buildOpportunityAlert(), buildRiskAlert()),
+                buildFusionContext(),
                 "2026-03-15"
         );
 
         assertTrue(markdown.startsWith("# 🌅 A股盘前异动雷达 | 2026-03-15"));
+        assertTrue(markdown.contains("## 宏观主线"));
+        assertTrue(markdown.contains("## 共振标的"));
         assertTrue(markdown.contains("## 机会榜"));
         assertTrue(markdown.contains("## 风险榜"));
         assertTrue(markdown.contains("🎯 事件评分"));
+        assertTrue(markdown.contains("主题强度"));
+        assertTrue(markdown.contains("共振强度"));
         assertTrue(markdown.contains("118 分"));
         assertTrue(markdown.contains("2 个事件簇 / 4 条支撑公告"));
         assertTrue(markdown.contains("平安银行:关于中标10亿元算力项目的公告"));
@@ -125,11 +146,13 @@ class AISummaryServiceImplTest {
         when(callResponseSpec.content()).thenReturn("今日核心是监管风险");
 
         String markdown = aiSummaryService.generateAEveningReportMarkdown(
-                List.of(buildOpportunityAlert(), buildRiskAlert()),
+                buildFusionContext(),
                 "2026-03-15"
         );
 
         assertTrue(markdown.startsWith("# 🌆 A股盘后情绪解码 | 2026-03-15"));
+        assertTrue(markdown.contains("## 宏观主线"));
+        assertTrue(markdown.contains("## 共振标的"));
         assertTrue(markdown.contains("## 机会榜"));
         assertTrue(markdown.contains("## 风险榜"));
         assertTrue(markdown.contains("当日热度"));
@@ -145,6 +168,15 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.startsWith("# 🌆 A股盘后情绪解码 | 2026-03-15"));
         assertTrue(markdown.contains("今日 A 股已收盘"));
         assertTrue(markdown.contains("盘后事件"));
+    }
+
+    @Test
+    @DisplayName("A股盘前早报融合上下文为空时返回无数据模板")
+    void generateAMorningReportMarkdown_UsesNoDataTemplateWhenFusionContextEmpty() {
+        String markdown = aiSummaryService.generateAMorningReportMarkdown(new AReportFusionContext(), "2026-03-15");
+
+        assertTrue(markdown.startsWith("# 🌅 AI 盘前异动雷达 | 2026-03-15"));
+        assertTrue(markdown.contains("暂无A股异动数据"));
     }
 
     private AStockRss buildNotice() {
@@ -186,5 +218,42 @@ class AISummaryServiceImplTest {
         stock.setEventCount(1);
         stock.setRawNoticeCount(2);
         return new StockAlertDTO<>(stock, 2, 112, 1, "利空");
+    }
+
+    private AReportFusionContext buildFusionContext() {
+        MacroThemeEvent macroTheme = new MacroThemeEvent();
+        macroTheme.setThemeName("算力");
+        macroTheme.setEventType("政策扶持");
+        macroTheme.setSignalSide("利多");
+        macroTheme.setSignalScore(90);
+        macroTheme.setMappedStockCount(3);
+        macroTheme.setMappedStocks("平安银行(000001)、浪潮信息(000977)、中科曙光(603019)");
+        macroTheme.setTitle("工信部推进算力基础设施建设");
+        macroTheme.setSummary("算力基础设施建设再获政策强化");
+
+        AReportResonanceCard resonanceCard = new AReportResonanceCard();
+        resonanceCard.setStockCode("000001");
+        resonanceCard.setStockName("平安银行");
+        resonanceCard.setSignalSide("利多");
+        resonanceCard.setFusionScore(136);
+        resonanceCard.setNoticeSignalScore(118);
+        resonanceCard.setMacroSignalScore(90);
+        resonanceCard.setEventClusterCount(2);
+        resonanceCard.setSupportNoticeCount(4);
+        resonanceCard.setMacroThemeName("算力");
+        resonanceCard.setMacroEventType("政策扶持");
+        resonanceCard.setNoticeEventType("重大合同");
+        resonanceCard.setRelationReason("宏观主题映射命中：平安银行(000001)");
+        resonanceCard.setNoticeTitle("平安银行:关于中标10亿元算力项目的公告");
+        resonanceCard.setMacroTitle("工信部推进算力基础设施建设");
+        resonanceCard.setMacroSummary("算力基础设施建设再获政策强化");
+        resonanceCard.setNoticeAnalysisHint("最高优先级事件为【重大合同】，方向=利多，总评分=118 分");
+
+        AReportFusionContext context = new AReportFusionContext();
+        context.setMacroThemes(List.of(macroTheme));
+        context.setResonanceCandidates(List.of(resonanceCard));
+        context.setOpportunityAlerts(List.of(buildOpportunityAlert()));
+        context.setRiskAlerts(List.of(buildRiskAlert()));
+        return context;
     }
 }

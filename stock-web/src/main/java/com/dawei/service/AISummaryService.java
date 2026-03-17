@@ -1,5 +1,6 @@
 package com.dawei.service;
 
+import com.dawei.entity.AReportFusionContext;
 import com.dawei.entity.AStockRss;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
@@ -45,12 +46,22 @@ public interface AISummaryService {
     String generateAMorningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate);
 
     /**
+     * 生成融合了宏观主题与公告线的 A股盘前早报
+     */
+    String generateAMorningReportMarkdown(AReportFusionContext reportContext, String reportDate);
+
+    /**
      * 生成A股盘后复盘的企业微信 Markdown 格式消息（晚间复盘模板）
      * @param stockAlertList A股异动数据列表（包含频次）
      * @param reportDate 报告日期
      * @return 完整的企业微信 Markdown 消息
      */
     String generateAEveningReportMarkdown(List<StockAlertDTO<AStockRss>> stockAlertList, String reportDate);
+
+    /**
+     * 生成融合了宏观主题与公告线的 A股盘后复盘
+     */
+    String generateAEveningReportMarkdown(AReportFusionContext reportContext, String reportDate);
 
     /**
      * 生成美股夜报（盘前预警）的企业微信 Markdown 格式消息（晚间模板）
