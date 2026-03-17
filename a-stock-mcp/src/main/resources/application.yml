@@ -3,12 +3,15 @@ spring:
     name: a-stock-mcp-server
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:prod}
+  main:
+    web-application-type: reactive
   ai:
     mcp:
       server:
         name: a-stock-monitor-mcp-server-sse      # MCP服务器名称
         version: 1.0.0                            # 服务器版本号
         sse-endpoint: /sse
+        sse-message-endpoint: /mcp/message
         type: async                               # 异步
   mail:
     host: ${SMTP_HOST:smtp.163.com}                            # 邮箱host
