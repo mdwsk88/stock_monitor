@@ -1,96 +1,101 @@
 package com.dawei.mcp.tool;
 
+import com.dawei.dto.AStockEventCard;
+import com.dawei.dto.AStockSignalSummary;
+import com.dawei.dto.StockResolveResult;
 import com.dawei.entity.AStockRss;
-import com.dawei.entity.StockCounts;
-import com.dawei.service.AStockService;
+import com.dawei.service.AStockResearchService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/**
- * @ClassName AStockTool
- * @Author dawei
- * @Version 1.0
- * @Description A股MCP工具类，提供A股数据查询服务
- **/
 @Component
 @Slf4j
 public class AStockTool {
 
     @Resource
-    private AStockService aStockService;
+    private AStockResearchService aStockResearchService;
 
-    /**
-     * 根据股票代码查询A股信息
-     */
-    @Tool(description = "根据股票代码查询股票信息数据")
-    public List<AStockRss> queryAStockInfoByCode(String stockCode) {
-        log.info("========== 调用MCP工具：queryAStockInfoByCode() ==========");
-        log.info("| stockCode: {}", stockCode);
-
-        return aStockService.queryStock(stockCode);
+    @Tool(description = "先用这个工具解析用户口中的A股标的。"
+            + "适用于用户输入股票简称、全称或代码，例如：茅台、贵州茅台、600519。"
+            + "返回候选股票、匹配方式、置信度和最近高价值公告数量。")
+    public List<StockResolveResult> resolveAStock(
+            @ToolParam(description = "用户输入的股票简称、公司名或代码") String stockQuery,
+            @ToolParam(description = "返回候选数量，默认 5，最大 10") Integer limit) {
+        log.info("========== 调用MCP工具：resolveAStock() ==========");
+        log.info("| stockQuery: {}", stockQuery);
+        log.info("| limit: {}", limit);
+        return aStockResearchService.resolveStocks(stockQuery, limit);
     }
 
-    /**
-     * 根据股票名称查询A股信息
-     */
-    //@Tool(description = "根据股票名称查询A股股票信息数据，支持模糊查询，如：平安银行、茅台")
-    public List<AStockRss> queryAStockInfoByName(String stockName) {
-        log.info("========== 调用MCP工具：queryAStockInfoByName() ==========");
-        log.info("| stockName: {}", stockName);
-
-        return aStockService.queryStockByName(stockName);
+    @Tool(description = "当用户询问某只股票最近怎么看、有什么利好利空、值不值得关注时优先使用。"
+            + "返回一个聚合摘要，包含 dominantSignalSide、事件簇数量、最近高价值公告数和 topEvents。"
+            + "默认看最近 30 天，已经过滤掉低价值行政公告。")
+    public AStockSignalSummary getAStockSignalSummary(
+            @ToolParam(description = "股票简称、公司名或代码") String stockQuery,
+            @ToolParam(description = "回看天数，默认 30，最大 90") Integer days) {
+        log.info("========== 调用MCP工具：getAStockSignalSummary() ==========");
+        log.info("| stockQuery: {}", stockQuery);
+        log.info("| days: {}", days);
+        return aStockResearchService.getStockSignalSummary(stockQuery, days);
     }
 
-    /**
-     * 根据股票代码和日期范围查询A股信息
-     */
-    @Tool(description = "根据股票代码查询某段日期内的股票信息数据，日期格式：yyyy-MM-dd")
-    public List<AStockRss> queryAStockInfoByCodeBetweenDate(String stockCode, String startDate, String endDate) {
-        log.info("========== 调用MCP工具：queryAStockInfoByCodeBetweenDate() ==========");
-        log.info("| stockCode: {}", stockCode);
-        log.info("| startDate: {}", startDate);
-        log.info("| endDate: {}", endDate);
-
-        return aStockService.queryStockBetweenDate(stockCode, startDate, endDate);
+    @Tool(description = "当用户想看某只股票最近有哪些核心事件时使用。"
+            + "返回事件卡片而不是原始公告流水，每张卡片都按 clusterKey 聚合，包含代表标题、signalScore、signalSide 和 supportNoticeCount。")
+    public List<AStockEventCard> getAStockRecentEventCards(
+            @ToolParam(description = "股票简称、公司名或代码") String stockQuery,
+            @ToolParam(description = "回看天数，默认 30") Integer days,
+            @ToolParam(description = "最小 signalScore，默认 60") Integer minSignalScore,
+            @ToolParam(description = "最多返回事件卡片数，默认 6") Integer limit) {
+        log.info("========== 调用MCP工具：getAStockRecentEventCards() ==========");
+        log.info("| stockQuery: {}", stockQuery);
+        log.info("| days: {}", days);
+        log.info("| minSignalScore: {}", minSignalScore);
+        log.info("| limit: {}", limit);
+        return aStockResearchService.getRecentEventCards(stockQuery, days, minSignalScore, limit);
     }
 
-    /**
-     * 查询指定日期段内出现次数超过目标次数的股票
-     */
-    @Tool(description = "查询某日期段内的哪些股票出现的次数超过指定的目标次数")
-    public List<StockCounts> queryAStockCountsBetweenDate(Integer targetCounts, String startDate, String endDate) {
-        log.info("========== 调用MCP工具：queryAStockCountsBetweenDate() ==========");
-        log.info("| targetCounts: {}", targetCounts);
-        log.info("| startDate: {}", startDate);
-        log.info("| endDate: {}", endDate);
-
-        return aStockService.queryStockCountsBetweenDate(targetCounts, startDate, endDate);
+    @Tool(description = "当用户问今天看什么票、今天有哪些值得关注的机会股时使用。"
+            + "返回最近 24 小时内高分利多事件构成的机会榜，默认只看 signalScore>=80 的事件，并对同一股票去重。")
+    public List<AStockEventCard> getAStockOpportunityBoard(
+            @ToolParam(description = "回看小时数，默认 24") Integer hours,
+            @ToolParam(description = "最小 signalScore，默认 80") Integer minSignalScore,
+            @ToolParam(description = "返回数量，默认 6") Integer limit) {
+        log.info("========== 调用MCP工具：getAStockOpportunityBoard() ==========");
+        log.info("| hours: {}", hours);
+        log.info("| minSignalScore: {}", minSignalScore);
+        log.info("| limit: {}", limit);
+        return aStockResearchService.getOpportunityBoard(hours, minSignalScore, limit);
     }
 
-    /**
-     * 根据标题关键字查询A股信息
-     */
-    @Tool(description = "根据标题关键字来查询股票信息数据")
-    public List<AStockRss> queryAStockByTitleKeywords(List<String> titleKeywords) {
-        log.info("========== 调用MCP工具：queryAStockByTitleKeywords() ==========");
-        log.info("| titleKeywords: {}", titleKeywords);
-
-        return aStockService.queryStockByTitleKeywords(titleKeywords);
+    @Tool(description = "当用户问今天有哪些雷、哪些股票偏利空时使用。"
+            + "返回最近 24 小时内高分利空事件构成的风险榜，默认只看 signalScore>=70 的 SELL 事件，并对同一股票去重。")
+    public List<AStockEventCard> getAStockRiskBoard(
+            @ToolParam(description = "回看小时数，默认 24") Integer hours,
+            @ToolParam(description = "最小 signalScore，默认 70") Integer minSignalScore,
+            @ToolParam(description = "返回数量，默认 6") Integer limit) {
+        log.info("========== 调用MCP工具：getAStockRiskBoard() ==========");
+        log.info("| hours: {}", hours);
+        log.info("| minSignalScore: {}", minSignalScore);
+        log.info("| limit: {}", limit);
+        return aStockResearchService.getRiskBoard(hours, minSignalScore, limit);
     }
 
-    /**
-     * 根据股票名称关键字查询A股信息
-     */
-    @Tool(description = "根据股票名称关键字来查询股票信息数据")
-    public List<AStockRss> queryAStockByNameKeywords(List<String> nameKeywords) {
-        log.info("========== 调用MCP工具：queryAStockByNameKeywords() ==========");
-        log.info("| nameKeywords: {}", nameKeywords);
-
-        return aStockService.queryStockByNameKeywords(nameKeywords);
+    @Tool(description = "仅在需要查看原始公告明细时使用。"
+            + "这是一个兜底工具，不适合直接回答买卖建议。"
+            + "默认只返回最近 30 天内 signalScore>=50 的少量公告，避免上下文爆炸。")
+    public List<AStockRss> queryRawAStockNotices(
+            @ToolParam(description = "股票简称、公司名或代码") String stockQuery,
+            @ToolParam(description = "回看天数，默认 30") Integer days,
+            @ToolParam(description = "最多返回公告数，默认 5") Integer limit) {
+        log.info("========== 调用MCP工具：queryRawAStockNotices() ==========");
+        log.info("| stockQuery: {}", stockQuery);
+        log.info("| days: {}", days);
+        log.info("| limit: {}", limit);
+        return aStockResearchService.queryRawAStockNotices(stockQuery, days, limit);
     }
-
 }

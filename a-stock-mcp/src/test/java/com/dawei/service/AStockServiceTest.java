@@ -2,175 +2,138 @@ package com.dawei.service;
 
 import com.dawei.entity.AStockRss;
 import com.dawei.entity.StockCounts;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.util.Arrays;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * AStockService 单元测试
- * 
- * ⚠️ 注意：本测试需要完整的数据库环境配置
- * 暂时禁用，待配置 test profile 后启用
- */
 @SpringBootTest
 @ActiveProfiles("test")
-@Disabled("需要完整的数据库环境配置")
-@Slf4j
 class AStockServiceTest {
+
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired
     private AStockService aStockService;
 
     @Test
-    void testQueryStock() {
-        log.info("========== 测试 queryStock - 光云科技(688365) ==========");
-        List<AStockRss> result = aStockService.queryStock("688365");
-        
+    void queryStockShouldFilterNoiseAndApplyLimit() {
+        List<AStockRss> result = aStockService.queryStock("600519");
+
         assertNotNull(result);
-        assertEquals(5, result.size(), "光云科技应该有5条记录");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertEquals("688365", stock.getStockCode());
-            assertEquals("光云科技", stock.getStockName());
-        });
-        
-        log.info("✅ queryStock 测试通过");
+        assertEquals(8, result.size(), "默认只应返回 8 条高价值公告");
+        assertTrue(result.stream().allMatch(stock -> stock.getSignalScore() >= 60), "应过滤低分噪音公告");
+        assertTrue(result.stream().allMatch(stock -> "600519".equals(stock.getStockCode())));
+        assertTrue(result.stream().noneMatch(stock -> stock.getTitle().contains("营业执照")));
+        assertTrue(result.stream().noneMatch(stock -> stock.getTitle().contains("董事会会议通知")));
+        assertEquals(95, result.get(0).getSignalScore());
+        assertSortedByScoreThenDate(result);
     }
 
     @Test
-    void testQueryStockByName() {
-        log.info("========== 测试 queryStockByName - 光云科技 ==========");
-        List<AStockRss> result = aStockService.queryStockByName("光云");
-        
+    void queryStockByNameShouldSupportFuzzyMatchWithSameGuards() {
+        List<AStockRss> result = aStockService.queryStockByName("茅台");
+
         assertNotNull(result);
-        assertTrue(result.size() > 0, "应该能查询到包含'光云'的股票");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertTrue(stock.getStockName().contains("光云"));
-        });
-        
-        log.info("✅ queryStockByName 测试通过");
+        assertEquals(8, result.size(), "模糊查询也应继承默认 limit");
+        assertTrue(result.stream().allMatch(stock -> stock.getStockName().contains("茅台")));
+        assertTrue(result.stream().allMatch(stock -> stock.getSignalScore() >= 60));
+        assertSortedByScoreThenDate(result);
     }
 
     @Test
-    void testQueryStockBetweenDate() {
-        log.info("========== 测试 queryStockBetweenDate - 光云科技 ==========");
-        List<AStockRss> result = aStockService.queryStockBetweenDate(
-                "688365", 
-                "2024-01-15 00:00:00", 
-                "2024-01-18 23:59:59"
-        );
-        
+    void queryStockBetweenDateShouldRespectDateWindowAndScoreFilter() {
+        LocalDateTime now = LocalDateTime.now();
+        String startDate = format(now.minusDays(6).minusHours(12));
+        String endDate = format(now.plusHours(1));
+
+        List<AStockRss> result = aStockService.queryStockBetweenDate("600519", startDate, endDate);
+
         assertNotNull(result);
-        assertEquals(4, result.size(), "光云科技在指定日期范围内应该有4条记录");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertEquals("688365", stock.getStockCode());
-        });
-        
-        log.info("✅ queryStockBetweenDate 测试通过");
+        assertEquals(8, result.size(), "指定日期范围内应只返回窗口内的高价值公告");
+        assertTrue(result.stream().allMatch(stock -> stock.getSignalScore() >= 60));
+        assertTrue(result.stream().allMatch(stock -> !stock.getPubDate().isBefore(LocalDateTime.parse(startDate, DATE_TIME_FORMATTER))));
+        assertTrue(result.stream().allMatch(stock -> !stock.getPubDate().isAfter(LocalDateTime.parse(endDate, DATE_TIME_FORMATTER))));
+        assertSortedByScoreThenDate(result);
     }
 
     @Test
-    void testQueryStockCountsBetweenDate() {
-        log.info("========== 测试 queryStockCountsBetweenDate ==========");
-        List<StockCounts> result = aStockService.queryStockCountsBetweenDate(
-                3, 
-                "2024-01-15 00:00:00", 
-                "2024-01-31 23:59:59"
-        );
-        
+    void queryStockCountsBetweenDateShouldCountOnlyHighValueNotices() {
+        String startDate = format(LocalDateTime.now().minusDays(15));
+        String endDate = format(LocalDateTime.now().plusHours(1));
+
+        List<StockCounts> result = aStockService.queryStockCountsBetweenDate(3, startDate, endDate);
+
         assertNotNull(result);
-        assertTrue(result.size() >= 1, "应该有至少1只股票出现次数>=3次");
-        
-        result.forEach(count -> {
-            log.info("股票统计: {}({}) - {}次", count.getStockName(), count.getStockCode(), count.getOccurCounts());
-            assertNotNull(count.getStockCode());
-            assertNotNull(count.getOccurCounts());
-        });
-        
-        // 验证光云科技出现5次
-        boolean foundGuangyun = result.stream()
-                .anyMatch(c -> "688365".equals(c.getStockCode()) && "5".equals(c.getOccurCounts()));
-        assertTrue(foundGuangyun, "光云科技应该出现5次");
-        
-        log.info("✅ queryStockCountsBetweenDate 测试通过");
+        assertEquals(2, result.size(), "应只返回高价值公告次数达到阈值的股票");
+
+        Map<String, StockCounts> countsByCode = result.stream()
+                .collect(Collectors.toMap(StockCounts::getStockCode, Function.identity()));
+
+        assertEquals(11, countsByCode.get("600519").getOccurCounts());
+        assertEquals(3, countsByCode.get("000001").getOccurCounts());
+        assertFalse(countsByCode.containsKey("001696"), "低分噪音不应抬高出现次数");
     }
 
     @Test
-    void testQueryStockByTitleKeywords() {
-        log.info("========== 测试 queryStockByTitleKeywords ==========");
-        List<AStockRss> result = aStockService.queryStockByTitleKeywords(Arrays.asList("业绩", "产品"));
-        
+    void queryStockByTitleKeywordsShouldReturnOnlyHighValueKeywordMatches() {
+        List<AStockRss> result = aStockService.queryStockByTitleKeywords(List.of("回购", "减持"));
+
         assertNotNull(result);
-        assertTrue(result.size() > 0, "应该能查询到包含'业绩'或'产品'的标题");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertTrue(
-                stock.getTitle().contains("业绩") || stock.getTitle().contains("产品"),
-                "标题应该包含关键词"
-            );
-        });
-        
-        log.info("✅ queryStockByTitleKeywords 测试通过");
+        assertEquals(4, result.size(), "应命中 4 条高价值关键词公告");
+        assertTrue(result.stream().allMatch(stock -> stock.getSignalScore() >= 60));
+        assertTrue(result.stream().allMatch(stock ->
+                stock.getTitle().contains("回购") || stock.getTitle().contains("减持")));
+        assertSortedByScoreThenDate(result);
     }
 
     @Test
-    void testQueryStockByNameKeywords() {
-        log.info("========== 测试 queryStockByNameKeywords ==========");
-        List<AStockRss> result = aStockService.queryStockByNameKeywords(Arrays.asList("光云", "平安"));
-        
+    void queryStockByNameKeywordsShouldApplyLimitAcrossMultipleStocks() {
+        List<AStockRss> result = aStockService.queryStockByNameKeywords(List.of("茅台", "平安", "万丰"));
+
         assertNotNull(result);
-        assertTrue(result.size() > 0, "应该能查询到包含'光云'或'平安'的股票名称");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertTrue(
-                stock.getStockName().contains("光云") || stock.getStockName().contains("平安"),
-                "股票名称应该包含关键词"
-            );
-        });
-        
-        log.info("✅ queryStockByNameKeywords 测试通过");
+        assertEquals(8, result.size(), "多标的查询也应限制返回规模");
+        assertTrue(result.stream().allMatch(stock -> stock.getSignalScore() >= 60));
+        assertTrue(result.stream().allMatch(stock ->
+                stock.getStockName().contains("茅台")
+                        || stock.getStockName().contains("平安")
+                        || stock.getStockName().contains("万丰")));
+        assertEquals(95, result.get(0).getSignalScore());
+        assertSortedByScoreThenDate(result);
     }
 
     @Test
-    void testQueryStockNotFound() {
-        log.info("========== 测试 queryStock - 不存在的股票 ==========");
+    void queryStockShouldReturnEmptyListForUnknownCode() {
         List<AStockRss> result = aStockService.queryStock("999999");
-        
+
         assertNotNull(result);
-        assertEquals(0, result.size(), "不存在的股票应该返回空列表");
-        
-        log.info("✅ queryStock - 不存在的股票 测试通过");
+        assertTrue(result.isEmpty());
     }
 
-    @Test
-    void testQueryGuangyunFullName() {
-        log.info("========== 测试 queryStockByName - 光云科技全名 ==========");
-        List<AStockRss> result = aStockService.queryStockByName("光云科技");
-        
-        assertNotNull(result);
-        assertEquals(5, result.size(), "光云科技全名查询应该返回5条记录");
-        
-        result.forEach(stock -> {
-            log.info("查询结果: {}", stock);
-            assertEquals("688365", stock.getStockCode());
-            assertEquals("光云科技", stock.getStockName());
-        });
-        
-        log.info("✅ queryStockByName - 光云科技全名 测试通过");
+    private String format(LocalDateTime dateTime) {
+        return DATE_TIME_FORMATTER.format(dateTime);
+    }
+
+    private void assertSortedByScoreThenDate(List<AStockRss> notices) {
+        for (int i = 1; i < notices.size(); i++) {
+            AStockRss previous = notices.get(i - 1);
+            AStockRss current = notices.get(i);
+            assertTrue(previous.getSignalScore() >= current.getSignalScore(),
+                    "结果应按 signalScore 倒序排序");
+            if (previous.getSignalScore().equals(current.getSignalScore())) {
+                assertTrue(!previous.getPubDate().isBefore(current.getPubDate()),
+                        "同分结果应按 pubDate 倒序排序");
+            }
+        }
     }
 }

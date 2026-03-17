@@ -24,11 +24,15 @@ public interface AStockRssMapper extends BaseMapper<AStockRss> {
     /**
      * 根据标题关键字查询股票数据
      */
-    List<AStockRss> queryStockByTitleKeywords(@Param("keywords") List<String> titleKeywords);
+    List<AStockRss> queryStockByTitleKeywords(@Param("keywords") List<String> titleKeywords,
+                                              @Param("minSignalScore") Integer minSignalScore,
+                                              @Param("limit") Integer limit);
 
     /**
      * 根据股票名称关键字查询
      */
-    List<AStockRss> queryStockByNameKeywords(@Param("keywords") List<String> nameKeywords);
+    List<AStockRss> queryStockByNameKeywords(@Param("keywords") List<String> nameKeywords,
+                                             @Param("minSignalScore") Integer minSignalScore,
+                                             @Param("limit") Integer limit);
 
 }

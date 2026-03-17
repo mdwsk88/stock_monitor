@@ -2,7 +2,7 @@ package com.dawei;
 
 import com.dawei.common.utils.DotenvLoader;
 import com.dawei.mcp.tool.AStockTool;
-import com.dawei.mcp.tool.WebFetchTool;
+import com.dawei.mcp.tool.MacroThemeTool;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.boot.SpringApplication;
@@ -17,9 +17,9 @@ public class Application {
     }
 
     @Bean
-    public ToolCallbackProvider registMCPTools(AStockTool aStockTool, WebFetchTool webFetchTool) {
+    public ToolCallbackProvider registMCPTools(AStockTool aStockTool, MacroThemeTool macroThemeTool) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(aStockTool, webFetchTool)
+                .toolObjects(aStockTool, macroThemeTool)
                 .build();
     }
 }
