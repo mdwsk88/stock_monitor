@@ -1,6 +1,5 @@
 package com.dawei.entity;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,37 +8,27 @@ import lombok.ToString;
 
 import java.time.LocalDateTime;
 
-/**
- * @ClassName AStockRss
- * @Author dawei
- * @Version 1.0
- * @Description A股公告实体类
- **/
 @Data
 @ToString
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("a_stock_rss")
-public class AStockRss {
+@TableName("a_macro_theme_event")
+public class MacroThemeEvent {
 
     private String id;
-    private String artCode;
-    private String stockCode;
-    private String stockName;
+    private String sourceName;
+    private String sourceType;
+    private String newsKey;
     private String title;
-    private String tag;
+    private String summary;
     private String link;
+    private String sourceTags;
     private LocalDateTime pubDate;
     private LocalDateTime createTime;
+    private String themeName;
     private String eventType;
     private String signalSide;
     private Integer signalScore;
+    private Integer importanceLevel;
     private String clusterKey;
-
-    @TableField(exist = false)
-    private String relatedTitles;
-
-    @TableField(exist = false)
-    private Integer supportNoticeCount;
-
 }

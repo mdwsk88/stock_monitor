@@ -8,6 +8,8 @@ import com.dawei.service.AStockService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +23,13 @@ import java.util.Map;
 @Service
 public class AStockServiceImpl implements AStockService {
 
+    private static final int DEFAULT_MIN_SIGNAL_SCORE = 60;
+    private static final int DEFAULT_RESULT_LIMIT = 8;
+    private static final int DEFAULT_COUNTS_LIMIT = 10;
+    private static final int DEFAULT_LOOKBACK_DAYS = 30;
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @Resource
     private AStockRssMapper aStockRssMapper;
 
@@ -28,7 +37,11 @@ public class AStockServiceImpl implements AStockService {
     public List<AStockRss> queryStock(String stockCode) {
         QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("stock_code", stockCode);
-        queryWrapper.orderByDesc("pub_date");
+        queryWrapper.ge("signal_score", DEFAULT_MIN_SIGNAL_SCORE);
+        queryWrapper.ge("pub_date", format(LocalDateTime.now().minusDays(DEFAULT_LOOKBACK_DAYS)));
+        queryWrapper.orderByDesc("signal_score")
+                .orderByDesc("pub_date")
+                .last(limitClause(DEFAULT_RESULT_LIMIT));
         return aStockRssMapper.selectList(queryWrapper);
     }
 
@@ -36,7 +49,11 @@ public class AStockServiceImpl implements AStockService {
     public List<AStockRss> queryStockByName(String stockName) {
         QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
         queryWrapper.like("stock_name", stockName);
-        queryWrapper.orderByDesc("pub_date");
+        queryWrapper.ge("signal_score", DEFAULT_MIN_SIGNAL_SCORE);
+        queryWrapper.ge("pub_date", format(LocalDateTime.now().minusDays(DEFAULT_LOOKBACK_DAYS)));
+        queryWrapper.orderByDesc("signal_score")
+                .orderByDesc("pub_date")
+                .last(limitClause(DEFAULT_RESULT_LIMIT));
         return aStockRssMapper.selectList(queryWrapper);
     }
 
@@ -45,7 +62,10 @@ public class AStockServiceImpl implements AStockService {
         QueryWrapper<AStockRss> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("stock_code", stockCode);
         queryWrapper.between("pub_date", startDate, endDate);
-        queryWrapper.orderByDesc("pub_date");
+        queryWrapper.ge("signal_score", DEFAULT_MIN_SIGNAL_SCORE);
+        queryWrapper.orderByDesc("signal_score")
+                .orderByDesc("pub_date")
+                .last(limitClause(DEFAULT_RESULT_LIMIT));
         return aStockRssMapper.selectList(queryWrapper);
     }
 
@@ -55,17 +75,35 @@ public class AStockServiceImpl implements AStockService {
         map.put("targetCounts", targetCounts);
         map.put("startDate", startDate);
         map.put("endDate", endDate);
+        map.put("minSignalScore", DEFAULT_MIN_SIGNAL_SCORE);
+        map.put("limit", DEFAULT_COUNTS_LIMIT);
         return aStockRssMapper.queryStockCountsBetweenDate(map);
     }
 
     @Override
     public List<AStockRss> queryStockByTitleKeywords(List<String> titleKeywords) {
-        return aStockRssMapper.queryStockByTitleKeywords(titleKeywords);
+        return aStockRssMapper.queryStockByTitleKeywords(
+                titleKeywords,
+                DEFAULT_MIN_SIGNAL_SCORE,
+                DEFAULT_RESULT_LIMIT
+        );
     }
 
     @Override
     public List<AStockRss> queryStockByNameKeywords(List<String> nameKeywords) {
-        return aStockRssMapper.queryStockByNameKeywords(nameKeywords);
+        return aStockRssMapper.queryStockByNameKeywords(
+                nameKeywords,
+                DEFAULT_MIN_SIGNAL_SCORE,
+                DEFAULT_RESULT_LIMIT
+        );
+    }
+
+    private String format(LocalDateTime dateTime) {
+        return DATE_TIME_FORMATTER.format(dateTime);
+    }
+
+    private String limitClause(int limit) {
+        return "LIMIT " + limit;
     }
 
 }

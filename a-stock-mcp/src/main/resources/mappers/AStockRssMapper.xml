@@ -6,12 +6,18 @@
     <!-- 通用查询映射结果 -->
     <resultMap id="BaseResultMap" type="com.dawei.entity.AStockRss">
         <id column="id" property="id" />
+        <result column="art_code" property="artCode" />
         <result column="stock_code" property="stockCode" />
         <result column="stock_name" property="stockName" />
         <result column="title" property="title" />
+        <result column="tag" property="tag" />
         <result column="link" property="link" />
         <result column="pub_date" property="pubDate" />
-        <result column="tag" property="tag" />
+        <result column="create_time" property="createTime" />
+        <result column="event_type" property="eventType" />
+        <result column="signal_side" property="signalSide" />
+        <result column="signal_score" property="signalScore" />
+        <result column="cluster_key" property="clusterKey" />
     </resultMap>
 
     <!-- 查询指定日期段内股票出现次数统计 -->
@@ -23,45 +29,58 @@
         FROM
             a_stock_rss
         WHERE
-            pub_date &lt;= #{paramMap.endDate} AND pub_date &gt;= #{paramMap.startDate}
+            pub_date &lt;= #{paramMap.endDate}
+            AND pub_date &gt;= #{paramMap.startDate}
+            AND signal_score &gt;= #{paramMap.minSignalScore}
         GROUP BY
             stock_code, stock_name
         HAVING
-            occurCounts &gt;= #{paramMap.targetCounts}
+            COUNT(*) &gt;= #{paramMap.targetCounts}
         ORDER BY
-            occurCounts DESC
+            occurCounts DESC,
+            MAX(signal_score) DESC,
+            MAX(pub_date) DESC
+        LIMIT #{paramMap.limit}
     </select>
 
     <!-- 根据标题关键字查询股票数据 -->
-    <select id="queryStockByTitleKeywords" resultType="com.dawei.entity.AStockRss">
+    <select id="queryStockByTitleKeywords" resultMap="BaseResultMap">
         SELECT
             *
         FROM
             a_stock_rss
         WHERE
+            signal_score &gt;= #{minSignalScore}
+            AND
             (
                 <foreach collection="keywords" item="kw" separator=" OR ">
                     title LIKE CONCAT('%', #{kw}, '%')
                 </foreach>
             )
         ORDER BY
+            signal_score DESC,
             pub_date DESC
+        LIMIT #{limit}
     </select>
 
     <!-- 根据股票名称关键字查询 -->
-    <select id="queryStockByNameKeywords" resultType="com.dawei.entity.AStockRss">
+    <select id="queryStockByNameKeywords" resultMap="BaseResultMap">
         SELECT
             *
         FROM
             a_stock_rss
         WHERE
+            signal_score &gt;= #{minSignalScore}
+            AND
             (
                 <foreach collection="keywords" item="kw" separator=" OR ">
                     stock_name LIKE CONCAT('%', #{kw}, '%')
                 </foreach>
             )
         ORDER BY
+            signal_score DESC,
             pub_date DESC
+        LIMIT #{limit}
     </select>
 
 </mapper>

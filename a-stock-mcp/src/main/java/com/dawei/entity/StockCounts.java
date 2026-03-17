@@ -19,6 +19,6 @@ public class StockCounts {
 
     private String stockCode;
     private String stockName;
-    private String occurCounts;
+    private Integer occurCounts;
 
 }
