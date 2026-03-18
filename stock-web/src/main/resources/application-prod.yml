@@ -28,3 +28,7 @@ spring:
       keepalive-time: 240000                  # 定期保活最小空闲连接，避免长时间静默后被对端重置
       validation-timeout: 5000                # 连接校验超时时间
       connection-test-query: SELECT 1
+      data-source-properties:
+        connectTimeout: 10000                 # 数据库连接建立超时，避免网络恢复阶段长时间卡死
+        socketTimeout: 60000                  # 数据库读写超时，避免休眠唤醒后请求无限挂起
+        tcpKeepAlive: true                    # 让驱动参与 TCP 保活，降低长连接静默断链概率

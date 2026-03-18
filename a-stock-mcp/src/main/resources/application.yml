@@ -3,6 +3,8 @@ spring:
     name: a-stock-mcp-server
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:prod}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   main:
     web-application-type: reactive
   ai:
@@ -40,3 +42,17 @@ mybatis-plus:
 logging:
   level:
     root: info
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
