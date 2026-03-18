@@ -1,6 +1,7 @@
 package com.dawei.utils;
 
 import com.dawei.entity.AStockMsg;
+import com.dawei.entity.AStockRealtimeAlertCard;
 import com.dawei.entity.USStockMsg;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -318,6 +319,51 @@ public class WeComApi {
         return stocks.stream()
                 .map(this::formatAStockInfo)
                 .collect(Collectors.joining("\n\n----------\n\n"));
+    }
+
+    /**
+     * 格式化A股盘中实时预警卡片
+     */
+    public String formatAStockRealtimeAlert(AStockRealtimeAlertCard card) {
+        if (card == null) {
+            return "暂无A股实时预警";
+        }
+
+        boolean riskAlert = card.getPushType() != null && card.getPushType().name().contains("RISK");
+
+        StringBuilder builder = new StringBuilder()
+                .append("# ").append(card.getEmoji()).append(" A股盘中")
+                .append(riskAlert ? "风险预警" : "突发预警")
+                .append("\n\n")
+                .append("> **标的**：").append(card.getStockName()).append("(").append(card.getStockCode()).append(")\n")
+                .append("> **定性**：<font color=\"")
+                .append(riskAlert ? "warning" : "info")
+                .append("\">").append(card.getSeverityLabel()).append("</font>")
+                .append(" | ").append(card.getEventType()).append(" | ").append(card.getSignalScore()).append(" 分\n")
+                .append("> **核心公告**：").append(card.getTitle()).append("\n")
+                .append("> **结论**：").append(card.getConclusion()).append("\n")
+                .append("> **推演**：").append(card.getReasoning()).append("\n");
+
+        if (card.getMacroThemeName() != null && !card.getMacroThemeName().isBlank()) {
+            builder.append("> **主线共振**：【").append(card.getMacroThemeName()).append("】");
+            if (card.getMacroSignalScore() != null && card.getMacroSignalScore() > 0) {
+                builder.append("（主题分 ").append(card.getMacroSignalScore()).append("）");
+            }
+            if (card.getResonanceScore() != null && card.getResonanceScore() > 0) {
+                builder.append("，融合分 ").append(card.getResonanceScore());
+            }
+            builder.append("\n");
+            if (card.getRelationReason() != null && !card.getRelationReason().isBlank()) {
+                builder.append("> **共振依据**：").append(card.getRelationReason()).append("\n");
+            }
+            if (card.getMacroTitle() != null && !card.getMacroTitle().isBlank()) {
+                builder.append("> **主题快讯**：").append(card.getMacroTitle()).append("\n");
+            }
+        }
+
+        builder.append("> **提醒**：").append(card.getRiskHint()).append("\n\n")
+                .append("<font color=\"comment\">仅供盘中研究与信息跟踪，不构成任何投资建议。</font>");
+        return builder.toString();
     }
 
     private List<String> prepareContentsForSend(String content, String messageType, MarketType marketType) {

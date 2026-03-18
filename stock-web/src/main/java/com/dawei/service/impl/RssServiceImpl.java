@@ -27,12 +27,8 @@ import java.net.URL;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -55,6 +51,9 @@ public class RssServiceImpl implements RssService {
 
     @Resource
     private AStockSignalService aStockSignalService;
+
+    @Resource
+    private AStockRealtimePushService aStockRealtimePushService;
 
     public static final String RSS_URL = "https://www.stocktitan.net/rss";
     public static final String A_STOCK_NOTICE_URL = "https://np-anotice-stock.eastmoney.com/api/security/ann";
@@ -218,8 +217,6 @@ public class RssServiceImpl implements RssService {
 
     @Override
     public void fetchAndSaveAStockNotices() throws Exception {
-        Map<String, RealtimeAStockAggregate> realtimeAlerts = new LinkedHashMap<>();
-
         HttpHeaders headers = new HttpHeaders();
         headers.set("User-Agent", "Mozilla/5.0");
         headers.set("Accept", "application/json");
@@ -256,34 +253,12 @@ public class RssServiceImpl implements RssService {
                     }
 
                     log.info("A股公告保存成功：{}", aStockRss);
-
-                    if (!aStockSignalService.isRealtimeAlert(aStockRss)) {
-                        continue;
+                    try {
+                        aStockRealtimePushService.handleSavedNotice(aStockRss);
+                    } catch (Exception pushEx) {
+                        log.error("A股实时预警处理失败，继续后续公告：stock={}, title={}, reason={}",
+                                aStockRss.getStockCode(), aStockRss.getTitle(), pushEx.getMessage(), pushEx);
                     }
-
-                    Long counts24Hour = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
-                            GMTDateConverter.minus24Hour(aStockRss.getPubDate()),
-                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
-                    Long counts3Day = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
-                            GMTDateConverter.minus3Day(aStockRss.getPubDate()),
-                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
-                    Long counts1Week = stockService.getAStockNoticeCounts(aStockRss.getStockCode(),
-                            GMTDateConverter.minus1Week(aStockRss.getPubDate()),
-                            GMTDateConverter.plus1Minute(aStockRss.getPubDate()));
-
-                    AStockMsg aStockMsg = new AStockMsg();
-                    aStockMsg.setStockCode(aStockRss.getStockCode());
-                    aStockMsg.setStockName(aStockRss.getStockName());
-                    aStockMsg.setTitle(aStockRss.getTitle());
-                    aStockMsg.setTag(aStockRss.getTag());
-                    aStockMsg.setPubDate(aStockRss.getPubDate().format(A_STOCK_TIME_FORMATTER));
-                    aStockMsg.setEventType(aStockRss.getEventType());
-                    aStockMsg.setSignalSide(aStockRss.getSignalSide());
-                    aStockMsg.setSignalScore(aStockRss.getSignalScore());
-                    aStockMsg.setCounts24Hour(counts24Hour.intValue());
-                    aStockMsg.setCounts3Day(counts3Day.intValue());
-                    aStockMsg.setCounts1Week(counts1Week.intValue());
-                    mergeRealtimeAlert(realtimeAlerts, aStockMsg);
                 } catch (Exception e) {
                     log.error("【警告】解析单条A股公告失败，跳过。原因: {}", e.getMessage());
                 }
@@ -293,25 +268,6 @@ public class RssServiceImpl implements RssService {
                 break;
             }
         }
-
-        List<AStockMsg> aStockMsgList = realtimeAlerts.values().stream()
-                .map(RealtimeAStockAggregate::toMessage)
-                .sorted(Comparator
-                        .comparing(AStockMsg::getSignalScore, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(AStockMsg::getPubDate, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
-        if (!aStockMsgList.isEmpty()) {
-            weComApi.sendMarkdownMessageAsync(weComApi.formatAStockInfoFromList(aStockMsgList), WeComApi.MarketType.A);
-        }
-    }
-
-    private void mergeRealtimeAlert(Map<String, RealtimeAStockAggregate> realtimeAlerts, AStockMsg candidate) {
-        if (candidate == null || candidate.getStockCode() == null || candidate.getStockCode().isBlank()) {
-            return;
-        }
-        realtimeAlerts.computeIfAbsent(candidate.getStockCode(),
-                        key -> new RealtimeAStockAggregate(candidate.getStockCode(), candidate.getStockName()))
-                .accept(candidate);
     }
 
     private String buildAStockNoticeUrl(int pageIndex) {
@@ -391,97 +347,5 @@ public class RssServiceImpl implements RssService {
     }
 
     private record SecurityRef(String stockCode, String stockName) {
-    }
-
-    private static final class RealtimeAStockAggregate {
-        private final String stockCode;
-        private final String stockName;
-        private final LinkedHashSet<String> eventTypes = new LinkedHashSet<>();
-        private final LinkedHashSet<String> tags = new LinkedHashSet<>();
-        private final LinkedHashSet<String> titles = new LinkedHashSet<>();
-        private String representativeTitle;
-        private String representativePubDate;
-        private String representativeSignalSide;
-        private Integer representativeSignalScore;
-        private int counts24Hour;
-        private int counts3Day;
-        private int counts1Week;
-
-        private RealtimeAStockAggregate(String stockCode, String stockName) {
-            this.stockCode = stockCode;
-            this.stockName = stockName;
-        }
-
-        private void accept(AStockMsg candidate) {
-            if (candidate.getEventType() != null && !candidate.getEventType().isBlank()) {
-                eventTypes.add(candidate.getEventType());
-            }
-            if (candidate.getTag() != null && !candidate.getTag().isBlank()) {
-                for (String tagPart : candidate.getTag().split("\\|")) {
-                    String trimmed = tagPart.trim();
-                    if (!trimmed.isEmpty()) {
-                        tags.add(trimmed);
-                    }
-                }
-            }
-            if (candidate.getTitle() != null && !candidate.getTitle().isBlank()) {
-                titles.add(candidate.getTitle());
-            }
-
-            counts24Hour = Math.max(counts24Hour, safeInt(candidate.getCounts24Hour()));
-            counts3Day = Math.max(counts3Day, safeInt(candidate.getCounts3Day()));
-            counts1Week = Math.max(counts1Week, safeInt(candidate.getCounts1Week()));
-
-            if (shouldReplaceRepresentative(candidate)) {
-                representativeTitle = candidate.getTitle();
-                representativePubDate = candidate.getPubDate();
-                representativeSignalSide = candidate.getSignalSide();
-                representativeSignalScore = candidate.getSignalScore();
-            }
-        }
-
-        private boolean shouldReplaceRepresentative(AStockMsg candidate) {
-            if (representativeSignalScore == null) {
-                return true;
-            }
-            int currentScore = safeInt(representativeSignalScore);
-            int candidateScore = safeInt(candidate.getSignalScore());
-            if (candidateScore != currentScore) {
-                return candidateScore > currentScore;
-            }
-            String currentPubDate = representativePubDate == null ? "" : representativePubDate;
-            String candidatePubDate = candidate.getPubDate() == null ? "" : candidate.getPubDate();
-            return candidatePubDate.compareTo(currentPubDate) >= 0;
-        }
-
-        private AStockMsg toMessage() {
-            AStockMsg message = new AStockMsg();
-            message.setStockCode(stockCode);
-            message.setStockName(stockName);
-            message.setTitle(representativeTitle);
-            message.setPubDate(representativePubDate);
-            message.setSignalSide(representativeSignalSide);
-            message.setSignalScore(representativeSignalScore);
-            message.setEventType(String.join("、", eventTypes));
-            message.setTag(String.join(" | ", tags));
-            message.setCounts24Hour(counts24Hour);
-            message.setCounts3Day(counts3Day);
-            message.setCounts1Week(counts1Week);
-            message.setBatchNoticeCount(titles.size());
-            message.setRelatedTitles(buildRelatedTitles());
-            return message;
-        }
-
-        private String buildRelatedTitles() {
-            List<String> extras = titles.stream()
-                    .filter(title -> !title.equals(representativeTitle))
-                    .limit(2)
-                    .toList();
-            return String.join("；", extras);
-        }
-
-        private int safeInt(Integer value) {
-            return value == null ? 0 : value;
-        }
     }
 }

@@ -10,6 +10,7 @@ import com.dawei.mapper.MacroThemeEventMapper;
 import com.dawei.mapper.MacroThemeStockRelMapper;
 import com.dawei.mapper.ThemeAutoPoolCandidateMapper;
 import com.dawei.service.MacroThemeResearchService;
+import com.dawei.support.SignalSideSupport;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -109,7 +110,7 @@ public class MacroThemeResearchServiceImpl implements MacroThemeResearchService 
                 .orderByDesc("importance_level")
                 .orderByDesc("pub_date")
                 .last(limitClause(DEFAULT_FETCH_LIMIT));
-        return macroThemeEventMapper.selectList(queryWrapper);
+        return normalizeEvents(macroThemeEventMapper.selectList(queryWrapper));
     }
 
     private Map<String, List<MacroThemeStockRel>> fetchRelationsByEventId(List<MacroThemeEvent> events) {
@@ -185,7 +186,7 @@ public class MacroThemeResearchServiceImpl implements MacroThemeResearchService 
         eventWrapper.orderByDesc("signal_score")
                 .orderByDesc("pub_date")
                 .last(limitClause(DEFAULT_FETCH_LIMIT));
-        List<MacroThemeEvent> events = macroThemeEventMapper.selectList(eventWrapper);
+        List<MacroThemeEvent> events = normalizeEvents(macroThemeEventMapper.selectList(eventWrapper));
         if (events.isEmpty()) {
             return Map.of();
         }
@@ -223,7 +224,7 @@ public class MacroThemeResearchServiceImpl implements MacroThemeResearchService 
     private ResonanceStockCard toResonanceCard(ThemeAutoPoolCandidate candidate,
                                                Map<String, MacroThemeEvent> bestThemeEventByThemeStock) {
         MacroThemeEvent themeEvent = bestThemeEventByThemeStock.get(candidate.getThemeName() + ":" + candidate.getStockCode());
-        if (themeEvent == null || !"BUY".equals(themeEvent.getSignalSide())) {
+        if (themeEvent == null || !SignalSideSupport.BUY.equals(themeEvent.getSignalSide())) {
             return null;
         }
         Integer themeSignalScore = themeEvent.getSignalScore();
@@ -275,14 +276,18 @@ public class MacroThemeResearchServiceImpl implements MacroThemeResearchService 
     }
 
     private String sideLabel(String signalSide) {
-        return switch (signalSide) {
-            case "BUY" -> "利多";
-            case "SELL" -> "利空";
-            default -> "中性";
-        };
+        return SignalSideSupport.toLabel(signalSide);
     }
 
     private String limitClause(int limit) {
         return "LIMIT " + limit;
+    }
+
+    private List<MacroThemeEvent> normalizeEvents(List<MacroThemeEvent> events) {
+        if (events == null || events.isEmpty()) {
+            return List.of();
+        }
+        events.forEach(event -> event.setSignalSide(SignalSideSupport.normalize(event.getSignalSide())));
+        return events;
     }
 }

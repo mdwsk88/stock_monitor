@@ -22,6 +22,11 @@
 3. 只在需要原始公告时再调用 `queryRawAStockNotices`
 4. 不要再把 `WebFetchTool` 暴露给 A 股问答链路
 
+补充两条关键口径：
+
+- `getAStockSignalSummary` 里的 `aggregateSignalScore` 是晚报同款股票聚合分，`topRawSignalScore` 才是单条公告原始分
+- 如果用户明确在问“今天”“晚报”“盘后”“复盘”“为什么上榜”，应把 `getAStockSignalSummary` 或 `getAStockRecentEventCards` 的 `days` 设为 `1`
+
 ## 提示词模板
 
 代码里提供了可复用模板类：
@@ -32,7 +37,8 @@
 
 ## 使用文档
 
-- 系统提示词文档：[wecom-robot-system-prompt.md](docs/wecom-robot-system-prompt.md)
+- 企业微信系统提示词（可直接复制版）：[wecom-robot-system-prompt.md](docs/wecom-robot-system-prompt.md)
+- 系统提示词模板：[wecom-a-stock-robot-system-prompt.md](src/main/resources/prompts/wecom-a-stock-robot-system-prompt.md)
 - 群公告文档：[wecom-group-announcement.md](docs/wecom-group-announcement.md)
 
 ## MCP 端点

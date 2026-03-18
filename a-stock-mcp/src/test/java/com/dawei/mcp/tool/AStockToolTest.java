@@ -36,6 +36,7 @@ class AStockToolTest {
         assertNotNull(result);
         assertEquals("600519", result.getStockCode());
         assertEquals("BUY", result.getDominantSignalSide());
+        assertEquals(180, result.getAggregateSignalScore());
         assertEquals(11, result.getHighValueNoticeCount());
         assertEquals(4, result.getTopEvents().size());
     }
@@ -54,10 +55,12 @@ class AStockToolTest {
         List<AStockEventCard> opportunityBoard = aStockTool.getAStockOpportunityBoard(72, 80, 6);
         List<AStockEventCard> riskBoard = aStockTool.getAStockRiskBoard(72, 70, 6);
 
-        assertEquals(5, opportunityBoard.size());
+        assertEquals(4, opportunityBoard.size());
         assertTrue(opportunityBoard.stream().allMatch(card -> "BUY".equals(card.getSignalSide())));
+        assertTrue(opportunityBoard.stream().allMatch(card -> "STOCK_AGGREGATE".equals(card.getScoreType())));
         assertEquals(1, riskBoard.size());
         assertEquals("SELL", riskBoard.get(0).getSignalSide());
+        assertEquals(131, riskBoard.get(0).getSignalScore());
     }
 
     @Test

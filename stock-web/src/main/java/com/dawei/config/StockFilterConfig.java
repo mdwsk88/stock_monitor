@@ -31,6 +31,31 @@ public class StockFilterConfig {
     private int aRealtimeSignalThreshold = 70;
 
     /**
+     * A股盘中机会预警最低信号分
+     */
+    private int aRealtimeOpportunityThreshold = 85;
+
+    /**
+     * A股盘中风险预警最低信号分
+     */
+    private int aRealtimeRiskThreshold = 88;
+
+    /**
+     * A股盘中核弹级预警最低信号分
+     */
+    private int aRealtimeCriticalThreshold = 92;
+
+    /**
+     * A股实时预警去重冷却时间（分钟）
+     */
+    private int aRealtimePushCooldownMinutes = 120;
+
+    /**
+     * A股实时预警宏观上下文回看窗口（小时）
+     */
+    private int aRealtimeContextHours = 24;
+
+    /**
      * A股榜单入围最低信号分
      */
     private int aRankingSignalThreshold = 60;

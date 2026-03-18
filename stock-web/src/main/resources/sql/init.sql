@@ -155,7 +155,34 @@ CREATE TABLE `a_theme_auto_pool` (
 
 
 -- --------------------------------------------------------
--- 7. 主题观察池映射表
+-- 7. A股实时推送日志
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `a_stock_push_log`;
+
+CREATE TABLE `a_stock_push_log` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `push_key` varchar(180) NOT NULL COMMENT '实时推送去重键',
+  `stock_code` varchar(20) DEFAULT NULL COMMENT '股票代码',
+  `stock_name` varchar(50) DEFAULT NULL COMMENT '股票名称',
+  `push_type` varchar(40) DEFAULT NULL COMMENT '推送类型：REALTIME_OPPORTUNITY/REALTIME_RISK',
+  `signal_side` varchar(20) DEFAULT NULL COMMENT '信号方向：利多/利空/中性',
+  `signal_score` int DEFAULT 0 COMMENT '公告信号分',
+  `event_type` varchar(50) DEFAULT NULL COMMENT '事件类型',
+  `title` varchar(500) DEFAULT NULL COMMENT '代表公告标题',
+  `macro_theme_name` varchar(50) DEFAULT NULL COMMENT '命中的宏观主题',
+  `resonance_score` int DEFAULT 0 COMMENT '共振分',
+  `decision_reason` varchar(255) DEFAULT NULL COMMENT '推送决策原因',
+  `pushed_at` datetime DEFAULT NULL COMMENT '实际推送时间',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_push_key_type_time` (`push_key`,`push_type`,`pushed_at`),
+  KEY `idx_push_time` (`pushed_at`),
+  KEY `idx_push_stock_time` (`stock_code`,`pushed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='A股实时推送日志';
+
+
+-- --------------------------------------------------------
+-- 8. 主题观察池映射表
 -- --------------------------------------------------------
 DROP TABLE IF EXISTS `a_theme_watchlist`;
 
