@@ -12,7 +12,8 @@
 
 2. `getAStockSignalSummary`
 适用场景：用户问“怎么看”“能买吗”“最近有什么消息”“值不值得关注”。
-目标：优先返回聚合摘要，读取 `dominantSignalSide`、`highValueNoticeCount`、`eventClusterCount` 和 `topEvents`。
+目标：优先返回聚合摘要，读取 `aggregateSignalScore`、`topRawSignalScore`、`dominantSignalSide`、`highValueNoticeCount`、`eventClusterCount` 和 `topEvents`。
+补充规则：如果用户明确提到“今天”“晚报”“盘后”“复盘”“为什么上榜”，调用时把 `days` 设为 `1`，并优先解释 `aggregateSignalScore`；如果存在 `bestResonanceFusionScore`，要同时说明这是共振融合分。
 
 3. `getAStockRecentEventCards`
 适用场景：用户想看最近有哪些核心事件，或者需要展开摘要中的事件细节。
@@ -42,6 +43,10 @@
 - 除非确实需要原始明细，否则不要直接使用 `queryRawAStockNotices`。
 - 不要把“公告数量多”直接解释成“机会更大”。
 - 回答个股时，优先引用 `signalScore`、`signalSide`、`eventType` 和事件簇信息。
+- 回答个股摘要时，优先引用 `aggregateSignalScore`；只有在解释单条公告强弱时才引用 `topRawSignalScore` 或事件卡片里的 `rawSignalScore`。
+- 当工具同时给出 `aggregateSignalScore` 和 `bestResonanceFusionScore` 时，要明确区分：
+  - `aggregateSignalScore` = 晚报同款股票聚合分
+  - `bestResonanceFusionScore` = 宏观主题与个股事件共振后的融合分
 - 回答市场机会时，优先结合 `getMacroThemeBoard` 和 `getThemeResonanceBoard`。
 - 如果工具结果为空，要明确说“当前没有检测到高价值事件”，不要编造原因。
 - 如果工具结果显示 `SELL` 或风险事件较多，要明确提醒风险，不要硬给正面结论。

@@ -20,7 +20,6 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -48,6 +47,9 @@ class RssServiceImplTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @Mock
+    private AStockRealtimePushService aStockRealtimePushService;
+
     private RssServiceImpl rssService;
 
     private ObjectMapper objectMapper;
@@ -64,6 +66,7 @@ class RssServiceImplTest {
         ReflectionTestUtils.setField(rssService, "weComApi", weComApi);
         ReflectionTestUtils.setField(rssService, "restTemplate", restTemplate);
         ReflectionTestUtils.setField(rssService, "aStockSignalService", new AStockSignalService(filterConfig));
+        ReflectionTestUtils.setField(rssService, "aStockRealtimePushService", aStockRealtimePushService);
         ReflectionTestUtils.setField(rssService, "usPushEnabled", false);
     }
 
@@ -97,10 +100,7 @@ class RssServiceImplTest {
         )).thenReturn(mockResponse);
 
         when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
-        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
-        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
-        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
-            .thenReturn(CompletableFuture.completedFuture(true));
+        when(aStockRealtimePushService.handleSavedNotice(any(AStockRss.class))).thenReturn(true);
 
         // 执行测试
         assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices());
@@ -115,6 +115,7 @@ class RssServiceImplTest {
 
         // 验证数据保存
         verify(stockService, atLeastOnce()).saveAStockNewsIfAbsent(any(AStockRss.class));
+        verify(aStockRealtimePushService).handleSavedNotice(any(AStockRss.class));
 
         log.info("✅ A股公告抓取成功测试通过 - 确认使用 RestTemplate");
     }
@@ -207,16 +208,13 @@ class RssServiceImplTest {
         when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
             .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
         when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
-        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
-        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
-        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
-            .thenReturn(CompletableFuture.completedFuture(true));
+        when(aStockRealtimePushService.handleSavedNotice(any(AStockRss.class))).thenReturn(true);
 
         assertDoesNotThrow(() -> rssService.fetchAndSaveAStockNotices(),
             "单条脏数据不应导致整批A股公告处理失败");
 
         verify(stockService, times(1)).saveAStockNewsIfAbsent(any(AStockRss.class));
-        verify(weComApi, times(1)).sendMarkdownMessageAsync(anyString(), eq(WeComApi.MarketType.A));
+        verify(aStockRealtimePushService, times(1)).handleSavedNotice(any(AStockRss.class));
 
         log.info("✅ A股单条脏数据隔离测试通过");
     }
@@ -243,10 +241,7 @@ class RssServiceImplTest {
         when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
                 .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
         when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
-        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L);
-        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
-        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
-                .thenReturn(CompletableFuture.completedFuture(true));
+        when(aStockRealtimePushService.handleSavedNotice(any(AStockRss.class))).thenReturn(true);
 
         rssService.fetchAndSaveAStockNotices();
 
@@ -258,7 +253,7 @@ class RssServiceImplTest {
     }
 
     @Test
-    void testFetchAndSaveAStockNotices_MergesRealtimeAlertsByStock() throws Exception {
+    void testFetchAndSaveAStockNotices_DelegatesRealtimeDecisionAfterEachSavedNotice() throws Exception {
         String mockJson = "{" +
                 "\"data\": {" +
                 "\"list\": [" +
@@ -283,26 +278,15 @@ class RssServiceImplTest {
         when(restTemplate.exchange(anyString(), any(), any(), eq(String.class)))
                 .thenReturn(new ResponseEntity<>(mockJson, HttpStatus.OK));
         when(stockService.saveAStockNewsIfAbsent(any(AStockRss.class))).thenReturn(true);
-        when(stockService.getAStockNoticeCounts(anyString(), any(), any())).thenReturn(1L, 2L, 4L, 2L, 3L, 5L);
-        when(weComApi.formatAStockInfoFromList(anyList())).thenReturn("mock-a-stock-message");
-        when(weComApi.sendMarkdownMessageAsync(anyString(), any(WeComApi.MarketType.class)))
-                .thenReturn(CompletableFuture.completedFuture(true));
+        when(aStockRealtimePushService.handleSavedNotice(any(AStockRss.class))).thenReturn(false, true);
 
         rssService.fetchAndSaveAStockNotices();
 
-        verify(weComApi).formatAStockInfoFromList(argThat(list -> {
-            if (list == null || list.size() != 1) {
-                return false;
-            }
-            AStockMsg message = list.get(0);
-            return "600599".equals(message.getStockCode())
-                    && Integer.valueOf(2).equals(message.getBatchNoticeCount())
-                    && message.getRelatedTitles() != null
-                    && message.getRelatedTitles().contains("终止上市")
-                    && message.getEventType() != null
-                    && message.getEventType().contains("交易风险")
-                    && message.getEventType().contains("退市风险");
-        }));
+        verify(aStockRealtimePushService, times(2)).handleSavedNotice(argThat(notice ->
+                "600599".equals(notice.getStockCode())
+                        && notice.getSignalScore() != null
+                        && notice.getSignalScore() >= 60));
+        verify(weComApi, never()).sendMarkdownMessageAsync(anyString(), eq(WeComApi.MarketType.A));
     }
 
     // ==================== 美股 RSS 抓取测试 ====================

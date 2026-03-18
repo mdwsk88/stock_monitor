@@ -17,10 +17,18 @@ public class AStockEventCard {
     private String eventType;
     private String signalSide;
     private Integer signalScore;
+    private Integer rawSignalScore;
+    private Integer stockAggregateScore;
+    private Integer fusionScore;
+    private String scoreType;
     private String clusterKey;
     private String tag;
     private LocalDateTime latestPubDate;
     private Integer supportNoticeCount;
+    private Integer eventClusterCount;
+    private String macroThemeName;
+    private Integer macroSignalScore;
+    private String relationReason;
     private String relatedTitles;
     private String analysisHint;
 }

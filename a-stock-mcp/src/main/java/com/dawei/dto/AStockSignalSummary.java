@@ -22,8 +22,16 @@ public class AStockSignalSummary {
     private Integer neutralEventCount;
     private Integer highValueNoticeCount;
     private Integer eventClusterCount;
+    private Integer aggregateSignalScore;
     private Integer topSignalScore;
+    private Integer topRawSignalScore;
+    private String dominantSignalSideLabel;
     private LocalDateTime latestPubDate;
+    private String bestResonanceThemeName;
+    private Integer bestResonanceFusionScore;
+    private Integer bestResonanceMacroSignalScore;
+    private String bestResonanceMacroTitle;
+    private String bestResonanceReason;
     private String analysisHint;
     private List<AStockEventCard> topEvents;
 }

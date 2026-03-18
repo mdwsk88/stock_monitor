@@ -33,7 +33,9 @@ public class AStockTool {
     }
 
     @Tool(description = "当用户询问某只股票最近怎么看、有什么利好利空、值不值得关注时优先使用。"
-            + "返回一个聚合摘要，包含 dominantSignalSide、事件簇数量、最近高价值公告数和 topEvents。"
+            + "返回一个聚合摘要，包含 dominantSignalSide、aggregateSignalScore、topRawSignalScore、事件簇数量、最近高价值公告数和 topEvents。"
+            + "其中 aggregateSignalScore 使用晚报同款聚合口径，topRawSignalScore 是单条公告原始分。"
+            + "如果用户明确提到今天、晚报、盘后复盘、为什么上榜，请把 days 设为 1，优先解释 aggregateSignalScore 和 bestResonanceFusionScore。"
             + "默认看最近 30 天，已经过滤掉低价值行政公告。")
     public AStockSignalSummary getAStockSignalSummary(
             @ToolParam(description = "股票简称、公司名或代码") String stockQuery,
@@ -45,7 +47,9 @@ public class AStockTool {
     }
 
     @Tool(description = "当用户想看某只股票最近有哪些核心事件时使用。"
-            + "返回事件卡片而不是原始公告流水，每张卡片都按 clusterKey 聚合，包含代表标题、signalScore、signalSide 和 supportNoticeCount。")
+            + "返回事件卡片而不是原始公告流水，每张卡片都按 clusterKey 聚合。"
+            + "signalScore 为晚报同款事件簇分，rawSignalScore 为代表公告原始分。"
+            + "如果用户在追问今天晚报里的具体依据，优先把 days 设为 1。")
     public List<AStockEventCard> getAStockRecentEventCards(
             @ToolParam(description = "股票简称、公司名或代码") String stockQuery,
             @ToolParam(description = "回看天数，默认 30") Integer days,
@@ -60,7 +64,8 @@ public class AStockTool {
     }
 
     @Tool(description = "当用户问今天看什么票、今天有哪些值得关注的机会股时使用。"
-            + "返回最近 24 小时内高分利多事件构成的机会榜，默认只看 signalScore>=80 的事件，并对同一股票去重。")
+            + "返回最近 24 小时内按晚报同款聚合分排序的机会榜。"
+            + "signalScore 为股票聚合分，不是单条公告原始分；若存在主线共振，会额外返回 fusionScore。")
     public List<AStockEventCard> getAStockOpportunityBoard(
             @ToolParam(description = "回看小时数，默认 24") Integer hours,
             @ToolParam(description = "最小 signalScore，默认 80") Integer minSignalScore,
@@ -73,7 +78,8 @@ public class AStockTool {
     }
 
     @Tool(description = "当用户问今天有哪些雷、哪些股票偏利空时使用。"
-            + "返回最近 24 小时内高分利空事件构成的风险榜，默认只看 signalScore>=70 的 SELL 事件，并对同一股票去重。")
+            + "返回最近 24 小时内按晚报同款聚合分排序的风险榜。"
+            + "signalScore 为股票聚合分，不是单条公告原始分。")
     public List<AStockEventCard> getAStockRiskBoard(
             @ToolParam(description = "回看小时数，默认 24") Integer hours,
             @ToolParam(description = "最小 signalScore，默认 70") Integer minSignalScore,

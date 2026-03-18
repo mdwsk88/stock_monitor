@@ -73,6 +73,16 @@ stock:
     frequency-threshold: 2
     # A股实时推送最低事件分：只把真正有交易含义的公告即时推送到群里
     a-realtime-signal-threshold: 70
+    # A股盘中机会预警线：只有高分利多白名单事件才允许实时推送
+    a-realtime-opportunity-threshold: 85
+    # A股盘中风险预警线：比机会流更苛刻，避免日常利空噪音频繁骚扰
+    a-realtime-risk-threshold: 88
+    # A股核弹级预警线：用于标记极少数需要强提醒的重大事件
+    a-realtime-critical-threshold: 92
+    # A股实时预警冷却时间：同一事件簇在窗口内只允许推一次
+    a-realtime-push-cooldown-minutes: 120
+    # A股实时预警宏观上下文回看窗口：只关联最近一段时间仍在发酵的主题
+    a-realtime-context-hours: 24
     # A股晨报/晚报最低事件分：低于该分数的公告即使入库也不会进入榜单
     a-ranking-signal-threshold: 60
     # A股每次抓取最多回扫页数，避免晚间集中披露时只扫到第一页

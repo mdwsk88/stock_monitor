@@ -1,6 +1,8 @@
 package com.dawei.utils;
 
 import com.dawei.entity.AStockMsg;
+import com.dawei.entity.AStockPushType;
+import com.dawei.entity.AStockRealtimeAlertCard;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpEntity;
@@ -44,6 +46,35 @@ class WeComApiTest {
         assertTrue(content.contains("📎 本轮命中"));
         assertTrue(content.contains("🗂️ 其他标题"));
         assertTrue(content.contains("交易风险、退市风险"));
+    }
+
+    @Test
+    void formatAStockRealtimeAlertShouldRenderStructuredCard() {
+        WeComApi weComApi = new WeComApi(mock(RestTemplate.class));
+        AStockRealtimeAlertCard card = new AStockRealtimeAlertCard();
+        card.setStockCode("300121");
+        card.setStockName("阳谷华泰");
+        card.setPushType(AStockPushType.REALTIME_OPPORTUNITY);
+        card.setSeverityLabel("核弹级催化");
+        card.setSignalScore(93);
+        card.setEventType("重大合同");
+        card.setTitle("阳谷华泰:关于中标8亿元无人机复材订单的公告");
+        card.setConclusion("阳谷华泰(300121) 刚披露高价值利多公告，属于盘中可跟踪的强催化。");
+        card.setReasoning("重大合同通常直接抬升订单兑现预期。");
+        card.setRiskHint("利好预警不等于直接涨停，仍需看资金承接。");
+        card.setMacroThemeName("低空经济");
+        card.setMacroTitle("低空飞行基础设施建设提速");
+        card.setMacroSignalScore(90);
+        card.setResonanceScore(148);
+        card.setRelationReason("公告直接命中主线");
+
+        String content = weComApi.formatAStockRealtimeAlert(card);
+
+        assertTrue(content.contains("A股盘中突发预警"));
+        assertTrue(content.contains("阳谷华泰(300121)"));
+        assertTrue(content.contains("低空经济"));
+        assertTrue(content.contains("融合分 148"));
+        assertTrue(content.contains("仅供盘中研究与信息跟踪"));
     }
 
     @Test
