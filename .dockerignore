@@ -4,6 +4,7 @@
 
 target
 **/target
+dist/
 
 .env
 *.env

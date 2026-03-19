@@ -1,0 +1,15 @@
+services:
+  a-stock-mcp:
+    image: ${A_STOCK_MCP_IMAGE:-stock-monitor-a-stock-mcp:latest}
+    container_name: stock-monitor-a-stock-mcp
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    env_file:
+      - ./env/a-stock-mcp.env
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8091/actuator/health | grep '\"status\":\"UP\"' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
