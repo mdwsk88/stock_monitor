@@ -2,7 +2,7 @@ name: stock-monitor
 
 services:
   stock-web:
-    image: ${STOCK_WEB_IMAGE:-stock-monitor-web:2026-03-14-amd64}
+    image: ${STOCK_WEB_IMAGE:-stock-monitor-web:latest}
     container_name: stock-monitor-web
     restart: unless-stopped
     init: true
