@@ -9,6 +9,7 @@
 - SSH: ssh -p 20035 root@192.168.110.2
 - SFTP: sftp -P 20035 root@192.168.110.2
 - NAS 型号/架构: Synology DS218+, x86_64
+- 本地构建平台要求: 这台 Mac 是 Apple Silicon，给 NAS 构建镜像必须使用 `linux/amd64`
 - NAS Docker 命令: /usr/local/bin/docker
 - 部署目录: /volume2/docker/stock-monitor
 - Docker 数据目录: /volume2/docker
@@ -36,6 +37,8 @@
 执行要求：
 - 优先使用 deploy/nas/deploy-to-nas.sh 做一键部署。
 - 如果脚本不适用，再手动执行构建、导出、传输、docker load、compose up。
+- 本地构建时默认用 `docker buildx build --platform linux/amd64 --load`，不要给 x86_64 群晖推送 arm64 镜像。
+- 如果使用 `--skip-build`，不要盲目复用 `latest`；先核对本地镜像创建时间，或直接改用显式版本标签再部署。
 - NAS 已开启 SFTP，端口同样是 20035；如果手动传文件，可直接用 scp/sftp，异常时再回退 tar-over-ssh。
 - 不要打印 env 文件中的密钥或密码。
 - 部署完成后检查：

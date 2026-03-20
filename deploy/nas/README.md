@@ -71,6 +71,7 @@ stock-web/src/main/resources/sql/init.sql
 默认行为：
 
 - 在本机构建 `stock-monitor-web:latest` 和 `stock-monitor-a-stock-mcp:latest`
+- 默认使用 `docker buildx build --platform linux/amd64 --load`，适配当前群晖 `x86_64`
 - 导出到 `deploy/nas/dist/`
 - 默认通过 tar-over-ssh 上传到 `root@192.168.110.2:20035`
 - 在 `/volume2/docker/stock-monitor` 下执行 `docker load` 和 `docker compose up -d`
@@ -82,6 +83,7 @@ stock-web/src/main/resources/sql/init.sql
 ./deploy/nas/deploy-to-nas.sh --only stock-web
 ./deploy/nas/deploy-to-nas.sh --only a-stock-mcp
 ./deploy/nas/deploy-to-nas.sh --skip-build
+./deploy/nas/deploy-to-nas.sh --platform linux/amd64
 ./deploy/nas/deploy-to-nas.sh \
   --stock-web-image stock-monitor-web:2026-03-19-amd64 \
   --a-stock-mcp-image stock-monitor-a-stock-mcp:2026-03-19-amd64
@@ -93,7 +95,7 @@ stock-web/src/main/resources/sql/init.sql
 ./deploy/nas/deploy-to-nas.sh --help
 ```
 
-说明：`--skip-build` 会优先复用本地同标签镜像；如果本地镜像已经被清掉，但 `deploy/nas/dist/` 里还保留对应 tar，也会直接复用现成产物继续部署。
+说明：`--skip-build` 会优先复用本地同标签镜像；如果本地镜像已经被清掉，但 `deploy/nas/dist/` 里还保留对应 tar，也会直接复用现成产物继续部署。若标签仍是浮动的 `latest`，建议先确认本地镜像创建时间或直接改用显式版本标签，避免把旧镜像再次部署到 NAS。
 
 如果你后续想直接让我自动部署，参数整理见：
 
@@ -108,13 +110,13 @@ deploy/nas/CODEX_DEPLOY_PROMPT.md
 在项目根目录执行：
 
 ```bash
-docker build -t stock-monitor-web:latest .
+docker buildx build --platform linux/amd64 --load -t stock-monitor-web:latest .
 ```
 
 可选：如果想保留一个可回滚的版本标签：
 
 ```bash
-docker build -t stock-monitor-web:2026-03-19-amd64 .
+docker buildx build --platform linux/amd64 --load -t stock-monitor-web:2026-03-19-amd64 .
 ```
 
 说明：`deploy/nas/docker-compose.yml` 默认使用 `stock-monitor-web:latest`。如果你想固定到某个版本标签，启动前显式设置 `STOCK_WEB_IMAGE` 即可。
@@ -124,13 +126,13 @@ docker build -t stock-monitor-web:2026-03-19-amd64 .
 在项目根目录执行：
 
 ```bash
-docker build --build-arg APP_MODULE=a-stock-mcp --build-arg APP_PORT=8091 -t stock-monitor-a-stock-mcp:latest .
+docker buildx build --platform linux/amd64 --load --build-arg APP_MODULE=a-stock-mcp --build-arg APP_PORT=8091 -t stock-monitor-a-stock-mcp:latest .
 ```
 
 可选：如果想保留一个可回滚的版本标签：
 
 ```bash
-docker build --build-arg APP_MODULE=a-stock-mcp --build-arg APP_PORT=8091 -t stock-monitor-a-stock-mcp:2026-03-19-amd64 .
+docker buildx build --platform linux/amd64 --load --build-arg APP_MODULE=a-stock-mcp --build-arg APP_PORT=8091 -t stock-monitor-a-stock-mcp:2026-03-19-amd64 .
 ```
 
 说明：`deploy/nas/docker-compose.a-stock-mcp.yml` 默认使用 `stock-monitor-a-stock-mcp:latest`。如果你想固定到某个版本标签，启动前显式设置 `A_STOCK_MCP_IMAGE` 即可。
