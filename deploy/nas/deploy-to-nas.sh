@@ -11,6 +11,7 @@ NAS_PORT="${NAS_PORT:-<nas-ssh-port>}"
 REMOTE_DIR="${REMOTE_DIR:-/volume1/docker/stock-monitor}"
 REMOTE_DOCKER_BIN="${REMOTE_DOCKER_BIN:-/usr/local/bin/docker}"
 SSH_STRICT_HOST_KEY_CHECKING="${SSH_STRICT_HOST_KEY_CHECKING:-accept-new}"
+DOCKER_BUILD_PLATFORM="${DOCKER_BUILD_PLATFORM:-linux/amd64}"
 
 ONLY="${ONLY:-both}"
 SKIP_BUILD=0
@@ -32,12 +33,13 @@ Options:
   --port <nas-ssh-port>
   --remote-dir /volume1/docker/stock-monitor
   --docker-bin /usr/local/bin/docker
+  --platform linux/amd64
   --stock-web-image stock-monitor-web:latest
   --a-stock-mcp-image stock-monitor-a-stock-mcp:latest
   -h, --help
 
 Environment variables:
-  NAS_HOST, NAS_PORT, REMOTE_DIR, REMOTE_DOCKER_BIN
+  NAS_HOST, NAS_PORT, REMOTE_DIR, REMOTE_DOCKER_BIN, DOCKER_BUILD_PLATFORM
   STOCK_WEB_IMAGE, A_STOCK_MCP_IMAGE, ONLY
 EOF
 }
@@ -85,18 +87,34 @@ ssh_cmd() {
   ssh -p "$NAS_PORT" -o "StrictHostKeyChecking=$SSH_STRICT_HOST_KEY_CHECKING" "$NAS_HOST" "$@"
 }
 
+build_image() {
+  local image="$1"
+  shift
+
+  if [ -n "$DOCKER_BUILD_PLATFORM" ]; then
+    log "Building $image for $DOCKER_BUILD_PLATFORM"
+    docker buildx build \
+      --platform "$DOCKER_BUILD_PLATFORM" \
+      --load \
+      -t "$image" \
+      "$@" \
+      "$ROOT_DIR"
+  else
+    log "Building $image for local Docker platform"
+    docker build -t "$image" "$@" "$ROOT_DIR"
+  fi
+
+  log "Built image metadata: $(docker image inspect "$image" --format '{{.Architecture}} {{.Created}}')"
+}
+
 build_stock_web() {
-  log "Building $STOCK_WEB_IMAGE"
-  docker build -t "$STOCK_WEB_IMAGE" "$ROOT_DIR"
+  build_image "$STOCK_WEB_IMAGE"
 }
 
 build_a_stock_mcp() {
-  log "Building $A_STOCK_MCP_IMAGE"
-  docker build \
+  build_image "$A_STOCK_MCP_IMAGE" \
     --build-arg APP_MODULE=a-stock-mcp \
-    --build-arg APP_PORT=8091 \
-    -t "$A_STOCK_MCP_IMAGE" \
-    "$ROOT_DIR"
+    --build-arg APP_PORT=8091
 }
 
 prepare_artifact() {
@@ -149,6 +167,11 @@ while [ $# -gt 0 ]; do
     --docker-bin)
       [ $# -ge 2 ] || fail "--docker-bin requires a value"
       REMOTE_DOCKER_BIN="$2"
+      shift 2
+      ;;
+    --platform)
+      [ $# -ge 2 ] || fail "--platform requires a value"
+      DOCKER_BUILD_PLATFORM="$2"
       shift 2
       ;;
     --stock-web-image)
