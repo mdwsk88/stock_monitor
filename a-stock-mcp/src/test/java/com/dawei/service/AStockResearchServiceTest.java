@@ -44,6 +44,9 @@ class AStockResearchServiceTest {
         assertEquals(180, result.getAggregateSignalScore());
         assertEquals(180, result.getTopSignalScore());
         assertEquals(95, result.getTopRawSignalScore());
+        assertEquals("股票聚合分（晚报同算法）", result.getAggregateScoreLabel());
+        assertEquals("最近30天滚动窗口", result.getAggregateScoreWindow());
+        assertTrue(result.getScoreComparisonNote().contains("不等同晚报固定的今日09:00-15:00窗口"));
         assertEquals(4, result.getTopEvents().size());
         assertTrue(result.getAnalysisHint().contains("利多"));
         assertTrue(result.getTopEvents().stream().allMatch(card -> card.getSignalScore() >= 92));
@@ -62,6 +65,9 @@ class AStockResearchServiceTest {
         assertEquals(2, channelCard.getSupportNoticeCount());
         assertEquals(95, channelCard.getSignalScore());
         assertEquals(89, channelCard.getRawSignalScore());
+        assertEquals("事件簇分", channelCard.getScoreLabel());
+        assertEquals("最近14天滚动窗口（按 clusterKey 聚合）", channelCard.getScoreWindow());
+        assertTrue(channelCard.getScoreComparisonNote().contains("不是单条公告原始分"));
         assertTrue(channelCard.getRelatedTitles().contains("直营网点持续扩容"));
 
         AStockEventCard buybackCard = result.stream()
@@ -81,6 +87,9 @@ class AStockResearchServiceTest {
         assertEquals("600519", result.get(0).getStockCode());
         assertEquals(164, result.get(0).getSignalScore());
         assertTrue(result.stream().allMatch(card -> "STOCK_AGGREGATE".equals(card.getScoreType())));
+        assertTrue(result.stream().allMatch(card -> "股票聚合分（晚报同算法）".equals(card.getScoreLabel())));
+        assertTrue(result.stream().allMatch(card -> "最近72小时滚动窗口".equals(card.getScoreWindow())));
+        assertTrue(result.stream().allMatch(card -> card.getScoreComparisonNote().contains("晚报固定窗口为今日09:00-15:00")));
         assertTrue(result.stream().allMatch(card -> "BUY".equals(card.getSignalSide())));
         assertTrue(result.stream().map(AStockEventCard::getStockCode).distinct().count() == result.size());
         assertTrue(result.stream().anyMatch(card ->
@@ -117,6 +126,7 @@ class AStockResearchServiceTest {
         assertNotNull(result);
         assertEquals("001696", result.getStockCode());
         assertEquals(91, result.getAggregateSignalScore());
+        assertEquals("最近7天滚动窗口", result.getAggregateScoreWindow());
         assertEquals("低空经济", result.getBestResonanceThemeName());
         assertTrue(result.getBestResonanceFusionScore() >= 140);
         assertEquals(93, result.getBestResonanceMacroSignalScore());

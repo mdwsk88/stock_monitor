@@ -93,6 +93,8 @@ class AISummaryServiceImplTest {
 
         assertFalse(markdown.contains("```"));
         assertTrue(markdown.startsWith("# 🌅 A股盘前异动雷达 | 2026-03-15"));
+        assertTrue(markdown.contains("口径说明"));
+        assertTrue(markdown.contains("最近24小时窗口内的股票聚合分"));
         assertTrue(promptText.contains("## MacroThemeCandidates"));
         assertTrue(promptText.contains("## ResonanceCandidates"));
         assertTrue(promptText.contains("## OpportunityCandidates"));
@@ -130,6 +132,7 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.contains("## 共振标的"));
         assertTrue(markdown.contains("## 机会榜"));
         assertTrue(markdown.contains("## 风险榜"));
+        assertTrue(markdown.contains("口径说明"));
         assertTrue(markdown.contains("🎯 事件评分"));
         assertTrue(markdown.contains("主题强度"));
         assertTrue(markdown.contains("共振强度"));
@@ -155,6 +158,8 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.contains("## 共振标的"));
         assertTrue(markdown.contains("## 机会榜"));
         assertTrue(markdown.contains("## 风险榜"));
+        assertTrue(markdown.contains("口径说明"));
+        assertTrue(markdown.contains("今日 09:00-15:00 交易时段内的股票聚合分"));
         assertTrue(markdown.contains("当日热度"));
         assertTrue(markdown.contains("*ST亚太"));
         assertTrue(markdown.contains("平安银行"));
