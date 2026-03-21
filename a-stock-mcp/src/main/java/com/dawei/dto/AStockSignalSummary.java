@@ -33,5 +33,8 @@ public class AStockSignalSummary {
     private String bestResonanceMacroTitle;
     private String bestResonanceReason;
     private String analysisHint;
+    private String aggregateScoreLabel;
+    private String aggregateScoreWindow;
+    private String scoreComparisonNote;
     private List<AStockEventCard> topEvents;
 }

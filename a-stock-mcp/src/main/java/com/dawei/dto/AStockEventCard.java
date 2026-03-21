@@ -31,4 +31,7 @@ public class AStockEventCard {
     private String relationReason;
     private String relatedTitles;
     private String analysisHint;
+    private String scoreLabel;
+    private String scoreWindow;
+    private String scoreComparisonNote;
 }

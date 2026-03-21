@@ -44,6 +44,8 @@ public class AStockResearchServiceImpl implements AStockResearchService {
     private static final int DEFAULT_RAW_MIN_SCORE = 50;
     private static final int DEFAULT_BOARD_HOURS = 24;
     private static final int DEFAULT_MACRO_MIN_SCORE = 75;
+    private static final String AGGREGATE_SCORE_LABEL = "股票聚合分（晚报同算法）";
+    private static final String CLUSTER_SCORE_LABEL = "事件簇分";
 
     private static final List<String> RISK_EVENT_KEYWORDS = List.of(
             "诉讼仲裁", "监管处罚", "业绩承压", "交易风险", "减持套现", "退市风险", "司法处置"
@@ -151,9 +153,16 @@ public class AStockResearchServiceImpl implements AStockResearchService {
             return emptySummary(stockQuery, lookbackDays);
         }
 
+        String aggregateScoreWindow = summaryWindowLabel(lookbackDays);
+        String scoreComparisonNote = summaryComparisonNote(lookbackDays);
         List<AStockEventCard> eventCards = aggregateView.clusters().stream()
                 .limit(DEFAULT_SUMMARY_TOP_EVENTS)
-                .map(cluster -> toClusterEventCard(cluster, aggregateView.aggregateSignalScore()))
+                .map(cluster -> toClusterEventCard(
+                        cluster,
+                        aggregateView.aggregateSignalScore(),
+                        clusterScoreWindowLabel(lookbackDays),
+                        clusterComparisonNote()
+                ))
                 .toList();
         ResonanceView resonanceView = findBestResonance(aggregateView, startTime, endTime);
 
@@ -186,7 +195,10 @@ public class AStockResearchServiceImpl implements AStockResearchService {
                 resonanceView.macroSignalScore(),
                 resonanceView.macroTitle(),
                 resonanceView.relationReason(),
-                buildSummaryHint(aggregateView, resonanceView),
+                buildSummaryHint(aggregateView, resonanceView, aggregateScoreWindow, scoreComparisonNote),
+                AGGREGATE_SCORE_LABEL,
+                aggregateScoreWindow,
+                scoreComparisonNote,
                 eventCards
         );
     }
@@ -215,9 +227,16 @@ public class AStockResearchServiceImpl implements AStockResearchService {
         if (aggregateView == null) {
             return List.of();
         }
+        String clusterScoreWindow = clusterScoreWindowLabel(lookbackDays);
+        String clusterComparisonNote = clusterComparisonNote();
         return aggregateView.clusters().stream()
                 .limit(normalizedLimit(limit, DEFAULT_EVENT_LIMIT, 10))
-                .map(cluster -> toClusterEventCard(cluster, aggregateView.aggregateSignalScore()))
+                .map(cluster -> toClusterEventCard(
+                        cluster,
+                        aggregateView.aggregateSignalScore(),
+                        clusterScoreWindow,
+                        clusterComparisonNote
+                ))
                 .toList();
     }
 
@@ -273,9 +292,11 @@ public class AStockResearchServiceImpl implements AStockResearchService {
                 .toList();
 
         List<AStockEventCard> result = new ArrayList<>();
+        String boardScoreWindow = boardWindowLabel(hours);
+        String boardComparisonNote = boardComparisonNote(hours);
         for (StockAggregateView view : views) {
             ResonanceView resonanceView = findBestResonance(view, startTime, endTime);
-            result.add(toBoardCard(view, resonanceView));
+            result.add(toBoardCard(view, resonanceView, boardScoreWindow, boardComparisonNote));
             if (result.size() >= limit) {
                 break;
             }
@@ -485,7 +506,10 @@ public class AStockResearchServiceImpl implements AStockResearchService {
                 .count();
     }
 
-    private AStockEventCard toClusterEventCard(ClusterView cluster, int stockAggregateScore) {
+    private AStockEventCard toClusterEventCard(ClusterView cluster,
+                                               int stockAggregateScore,
+                                               String scoreWindow,
+                                               String scoreComparisonNote) {
         AStockEventCard card = new AStockEventCard();
         card.setStockCode(cluster.representative().getStockCode());
         card.setStockName(cluster.representative().getStockName());
@@ -502,11 +526,17 @@ public class AStockResearchServiceImpl implements AStockResearchService {
         card.setSupportNoticeCount(cluster.noticeCount());
         card.setEventClusterCount(1);
         card.setRelatedTitles(relatedTitlesExcludingRepresentative(cluster));
-        card.setAnalysisHint(buildClusterHint(cluster));
+        card.setAnalysisHint(buildClusterHint(cluster, scoreWindow));
+        card.setScoreLabel(CLUSTER_SCORE_LABEL);
+        card.setScoreWindow(scoreWindow);
+        card.setScoreComparisonNote(scoreComparisonNote);
         return card;
     }
 
-    private AStockEventCard toBoardCard(StockAggregateView view, ResonanceView resonanceView) {
+    private AStockEventCard toBoardCard(StockAggregateView view,
+                                        ResonanceView resonanceView,
+                                        String scoreWindow,
+                                        String scoreComparisonNote) {
         ClusterView topCluster = view.topCluster();
         AStockEventCard card = new AStockEventCard();
         card.setStockCode(view.stockCode());
@@ -533,7 +563,10 @@ public class AStockResearchServiceImpl implements AStockResearchService {
         card.setMacroSignalScore(resonanceView.macroSignalScore());
         card.setRelationReason(resonanceView.relationReason());
         card.setRelatedTitles(aggregateClusterTitles(view.clusters()));
-        card.setAnalysisHint(buildBoardHint(view, resonanceView));
+        card.setAnalysisHint(buildBoardHint(view, resonanceView, scoreWindow, scoreComparisonNote));
+        card.setScoreLabel(AGGREGATE_SCORE_LABEL);
+        card.setScoreWindow(scoreWindow);
+        card.setScoreComparisonNote(scoreComparisonNote);
         return card;
     }
 
@@ -709,20 +742,29 @@ public class AStockResearchServiceImpl implements AStockResearchService {
         return StringUtils.hasText(view.stockName()) && view.stockName().toUpperCase(Locale.ROOT).contains("ST");
     }
 
-    private String buildSummaryHint(StockAggregateView aggregateView, ResonanceView resonanceView) {
+    private String buildSummaryHint(StockAggregateView aggregateView,
+                                    ResonanceView resonanceView,
+                                    String aggregateScoreWindow,
+                                    String scoreComparisonNote) {
         StringBuilder builder = new StringBuilder(aggregateView.analysisHint());
-        builder.append(" 晚报口径聚合分=").append(aggregateView.aggregateSignalScore())
+        builder.append(" 当前查询口径=").append(aggregateScoreWindow).append("。");
+        builder.append(" 晚报同算法聚合分=").append(aggregateView.aggregateSignalScore())
                 .append("，原始最高公告分=").append(aggregateView.topCluster().rawSignalScore()).append("。");
         if (resonanceView.hasResonance()) {
             builder.append(" 当前最佳主题共振为【").append(resonanceView.themeName())
                     .append("】，融合分 ").append(resonanceView.fusionScore()).append("。");
         }
+        builder.append(' ').append(scoreComparisonNote);
         return builder.toString();
     }
 
-    private String buildBoardHint(StockAggregateView aggregateView, ResonanceView resonanceView) {
+    private String buildBoardHint(StockAggregateView aggregateView,
+                                  ResonanceView resonanceView,
+                                  String scoreWindow,
+                                  String scoreComparisonNote) {
         StringBuilder builder = new StringBuilder();
-        builder.append("晚报同款聚合分 ").append(aggregateView.aggregateSignalScore())
+        builder.append("当前查询口径=").append(scoreWindow).append("。");
+        builder.append(" 晚报同算法聚合分 ").append(aggregateView.aggregateSignalScore())
                 .append(" 分，事件簇 ").append(aggregateView.eventClusterCount())
                 .append(" 个，支撑公告 ").append(aggregateView.highValueNoticeCount()).append(" 条。");
         builder.append(" 主导方向为").append(SignalSideSupport.toLabel(aggregateView.dominantSignalSide())).append("。");
@@ -730,11 +772,13 @@ public class AStockResearchServiceImpl implements AStockResearchService {
             builder.append(" 与【").append(resonanceView.themeName()).append("】形成共振，融合分 ")
                     .append(resonanceView.fusionScore()).append("。");
         }
+        builder.append(' ').append(scoreComparisonNote);
         return builder.toString();
     }
 
-    private String buildClusterHint(ClusterView cluster) {
+    private String buildClusterHint(ClusterView cluster, String scoreWindow) {
         StringBuilder builder = new StringBuilder();
+        builder.append("当前查询口径=").append(scoreWindow).append("。 ");
         builder.append(SignalSideSupport.toLabel(cluster.signalSide()))
                 .append("事件，簇评分 ").append(cluster.clusterScore())
                 .append(" 分，原始最高公告分 ").append(cluster.rawSignalScore())
@@ -808,6 +852,9 @@ public class AStockResearchServiceImpl implements AStockResearchService {
                 null,
                 null,
                 "未解析到匹配的A股标的。",
+                AGGREGATE_SCORE_LABEL,
+                summaryWindowLabel(lookbackDays),
+                summaryComparisonNote(lookbackDays),
                 List.of()
         );
     }
@@ -849,6 +896,36 @@ public class AStockResearchServiceImpl implements AStockResearchService {
 
     private int normalizedWindowHours(Integer requestedHours) {
         return normalizedLimit(requestedHours, DEFAULT_BOARD_HOURS, 72);
+    }
+
+    private String summaryWindowLabel(int lookbackDays) {
+        if (lookbackDays <= 1) {
+            return "最近24小时滚动窗口";
+        }
+        return "最近" + lookbackDays + "天滚动窗口";
+    }
+
+    private String boardWindowLabel(int hours) {
+        return "最近" + hours + "小时滚动窗口";
+    }
+
+    private String clusterScoreWindowLabel(int lookbackDays) {
+        return summaryWindowLabel(lookbackDays) + "（按 clusterKey 聚合）";
+    }
+
+    private String summaryComparisonNote(int lookbackDays) {
+        if (lookbackDays <= 1) {
+            return "当前为最近24小时滚动窗口，接近盘前/盘后榜单口径，但不完全等同晚报固定的今日09:00-15:00窗口。";
+        }
+        return "当前为最近" + lookbackDays + "天滚动窗口，不等同晚报固定的今日09:00-15:00窗口。";
+    }
+
+    private String boardComparisonNote(int hours) {
+        return "当前为最近" + hours + "小时滚动窗口；若对照晚报，晚报固定窗口为今日09:00-15:00。";
+    }
+
+    private String clusterComparisonNote() {
+        return "这是当前查询窗口内按 clusterKey 聚合后的事件簇分，不是单条公告原始分，也不是整只股票的晚报聚合分。";
     }
 
     private int normalizedMinScore(Integer requestedScore, int defaultScore) {

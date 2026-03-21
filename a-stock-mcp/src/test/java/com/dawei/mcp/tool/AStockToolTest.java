@@ -37,6 +37,7 @@ class AStockToolTest {
         assertEquals("600519", result.getStockCode());
         assertEquals("BUY", result.getDominantSignalSide());
         assertEquals(180, result.getAggregateSignalScore());
+        assertEquals("最近30天滚动窗口", result.getAggregateScoreWindow());
         assertEquals(11, result.getHighValueNoticeCount());
         assertEquals(4, result.getTopEvents().size());
     }
@@ -46,6 +47,7 @@ class AStockToolTest {
         List<AStockEventCard> result = aStockTool.getAStockRecentEventCards("茅台", 14, 60, 6);
 
         assertEquals(6, result.size());
+        assertTrue(result.stream().anyMatch(card -> "事件簇分".equals(card.getScoreLabel())));
         assertTrue(result.stream().anyMatch(card ->
                 "600519:channel".equals(card.getClusterKey()) && card.getSupportNoticeCount() == 2));
     }
@@ -58,6 +60,7 @@ class AStockToolTest {
         assertEquals(4, opportunityBoard.size());
         assertTrue(opportunityBoard.stream().allMatch(card -> "BUY".equals(card.getSignalSide())));
         assertTrue(opportunityBoard.stream().allMatch(card -> "STOCK_AGGREGATE".equals(card.getScoreType())));
+        assertTrue(opportunityBoard.stream().allMatch(card -> "股票聚合分（晚报同算法）".equals(card.getScoreLabel())));
         assertEquals(1, riskBoard.size());
         assertEquals("SELL", riskBoard.get(0).getSignalSide());
         assertEquals(131, riskBoard.get(0).getSignalScore());

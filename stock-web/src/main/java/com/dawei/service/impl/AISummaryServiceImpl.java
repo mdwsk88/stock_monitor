@@ -34,6 +34,8 @@ public class AISummaryServiceImpl implements AISummaryService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int A_STOCK_SECTION_LIMIT = 3;
+    private static final String A_MORNING_SCORE_NOTE = "<font color=\"comment\">口径说明：机会榜/风险榜中的“事件评分”按最近24小时窗口内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或其他滚动窗口查询对比，分数可能不同。</font>";
+    private static final String A_EVENING_SCORE_NOTE = "<font color=\"comment\">口径说明：下方“当日热度/事件评分”按今日 09:00-15:00 交易时段内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或最近24小时滚动窗口查询对比，分数可能不同。</font>";
 
     public AISummaryServiceImpl(ChatClient chatClient) {
         this(chatClient, new AStockReportClassifier());
@@ -996,11 +998,28 @@ public class AISummaryServiceImpl implements AISummaryService {
                 || !cleaned.contains("## 机会榜")
                 || !cleaned.contains("## 风险榜")) {
             log.warn("A股 Markdown 输出不符合预期，使用降级模板。内容: {}", cleaned);
-            return morning
+            String fallback = morning
                     ? generateAMorningFallbackMarkdown(reportContext, reportDate)
                     : generateEveningFallbackMarkdown(reportContext, reportDate);
+            return injectAStockScoreNote(fallback, morning);
         }
-        return cleaned;
+        return injectAStockScoreNote(cleaned, morning);
+    }
+
+    private String injectAStockScoreNote(String markdown, boolean morning) {
+        if (markdown == null || markdown.isBlank() || markdown.contains("口径说明：")) {
+            return markdown;
+        }
+
+        String note = morning ? A_MORNING_SCORE_NOTE : A_EVENING_SCORE_NOTE;
+        int sectionIndex = markdown.indexOf("## 宏观主线");
+        if (sectionIndex < 0) {
+            return markdown + "\n\n" + note;
+        }
+
+        String prefix = markdown.substring(0, sectionIndex).trim();
+        String suffix = markdown.substring(sectionIndex);
+        return prefix + "\n\n" + note + "\n\n" + suffix;
     }
 
     private String indentMultiline(String text, String prefix) {
