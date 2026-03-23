@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股运营看板</title>
+    <style>
+        :root {
+            --bg: #f4efe7;
+            --panel: rgba(255, 251, 245, 0.86);
+            --panel-strong: rgba(255, 248, 239, 0.96);
+            --ink: #1d2421;
+            --muted: #66706a;
+            --line: rgba(36, 44, 39, 0.1);
+            --accent: #0f766e;
+            --accent-soft: rgba(15, 118, 110, 0.12);
+            --warn: #b45309;
+            --warn-soft: rgba(180, 83, 9, 0.12);
+            --danger: #b42318;
+            --danger-soft: rgba(180, 35, 24, 0.12);
+            --good: #166534;
+            --good-soft: rgba(22, 101, 52, 0.12);
+            --shadow: 0 24px 60px rgba(31, 41, 55, 0.08);
+            --radius-xl: 28px;
+            --radius-lg: 22px;
+            --radius-md: 16px;
+            --font-sans: "IBM Plex Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            --font-mono: "JetBrains Mono", "SFMono-Regular", "Menlo", monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: var(--font-sans);
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 34%),
+                radial-gradient(circle at top right, rgba(180, 83, 9, 0.14), transparent 28%),
+                linear-gradient(180deg, #f7f1e8 0%, #efe4d6 100%);
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(29, 36, 33, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(29, 36, 33, 0.02) 1px, transparent 1px);
+            background-size: 24px 24px;
+            pointer-events: none;
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent 85%);
+        }
+
+        .shell {
+            width: min(1400px, calc(100vw - 32px));
+            margin: 0 auto;
+            padding: 28px 0 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, rgba(255, 252, 248, 0.9), rgba(245, 235, 221, 0.92));
+            border: 1px solid rgba(35, 44, 38, 0.08);
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            box-shadow: var(--shadow);
+            display: grid;
+            gap: 18px;
+        }
+
+        .hero-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .eyebrow {
+            font-size: 12px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(32px, 5vw, 54px);
+            line-height: 0.98;
+            letter-spacing: -0.04em;
+            max-width: 9em;
+        }
+
+        .subtitle {
+            margin: 12px 0 0;
+            color: var(--muted);
+            max-width: 54em;
+            line-height: 1.6;
+        }
+
+        .hero-meta {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid transparent;
+            backdrop-filter: blur(10px);
+        }
+
+        .pill.healthy { background: var(--good-soft); color: var(--good); border-color: rgba(22, 101, 52, 0.16); }
+        .pill.warn { background: var(--warn-soft); color: var(--warn); border-color: rgba(180, 83, 9, 0.16); }
+        .pill.critical { background: var(--danger-soft); color: var(--danger); border-color: rgba(180, 35, 24, 0.16); }
+        .pill.neutral { background: rgba(29, 36, 33, 0.06); color: var(--ink); border-color: rgba(29, 36, 33, 0.08); }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            appearance: none;
+            border: 0;
+            cursor: pointer;
+            border-radius: 999px;
+            padding: 12px 16px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+        }
+
+        button.primary {
+            background: var(--ink);
+            color: #fffaf3;
+            box-shadow: 0 14px 34px rgba(29, 36, 33, 0.14);
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.64);
+            color: var(--ink);
+            border: 1px solid rgba(29, 36, 33, 0.08);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        .grid {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 18px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid rgba(35, 44, 38, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(14px);
+        }
+
+        .panel h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .panel-note {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .market-panel { grid-column: span 12; }
+        .metrics-panel { grid-column: span 12; }
+        .health-panel { grid-column: span 5; }
+        .distribution-panel { grid-column: span 7; }
+        .timeline-panel { grid-column: span 12; }
+        .pushes-panel { grid-column: span 7; }
+        .silent-panel { grid-column: span 5; }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .metric-card {
+            background: var(--panel-strong);
+            border: 1px solid rgba(35, 44, 38, 0.08);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            min-height: 114px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .metric-value {
+            margin-top: 12px;
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+        }
+
+        .metric-foot {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .market-card {
+            background: var(--panel-strong);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            border: 1px solid rgba(35, 44, 38, 0.08);
+        }
+
+        .market-card .label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+        }
+
+        .market-card .value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .value.positive { color: var(--good); }
+        .value.negative { color: var(--danger); }
+        .value.warn { color: var(--warn); }
+        .value.neutral { color: var(--ink); }
+
+        .warning-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .warning-item {
+            border-radius: 16px;
+            padding: 14px;
+            border: 1px solid rgba(35, 44, 38, 0.08);
+            background: rgba(255, 255, 255, 0.68);
+            line-height: 1.5;
+        }
+
+        .warning-item.critical {
+            background: rgba(180, 35, 24, 0.08);
+            border-color: rgba(180, 35, 24, 0.12);
+        }
+
+        .warning-item.warn {
+            background: rgba(180, 83, 9, 0.08);
+            border-color: rgba(180, 83, 9, 0.12);
+        }
+
+        .distribution-list,
+        .reason-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .bar-row {
+            display: grid;
+            grid-template-columns: 160px 1fr 56px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .bar-label {
+            font-size: 13px;
+            color: var(--ink);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .bar-track {
+            height: 12px;
+            border-radius: 999px;
+            background: rgba(29, 36, 33, 0.08);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent), #44a99e);
+        }
+
+        .bar-fill.warn {
+            background: linear-gradient(90deg, var(--warn), #df8b21);
+        }
+
+        .bar-fill.danger {
+            background: linear-gradient(90deg, var(--danger), #d75952);
+        }
+
+        .bar-value {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            text-align: right;
+            color: var(--muted);
+        }
+
+        .timeline-wrap {
+            display: grid;
+            gap: 14px;
+        }
+
+        .timeline-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .timeline-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
+            gap: 8px;
+            align-items: end;
+            min-height: 220px;
+        }
+
+        .timeline-col {
+            display: grid;
+            gap: 8px;
+            justify-items: center;
+        }
+
+        .timeline-bars {
+            width: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 4px;
+            min-height: 170px;
+        }
+
+        .timeline-bar {
+            width: 10px;
+            border-radius: 999px 999px 4px 4px;
+            background: var(--accent-soft);
+        }
+
+        .timeline-bar.notice { background: rgba(15, 118, 110, 0.84); }
+        .timeline-bar.push { background: rgba(22, 101, 52, 0.84); }
+        .timeline-bar.macro { background: rgba(180, 83, 9, 0.84); }
+        .timeline-bar.decision { background: rgba(29, 36, 33, 0.38); }
+
+        .timeline-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            text-align: left;
+            vertical-align: top;
+            font-size: 13px;
+        }
+
+        th {
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        td strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .code {
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 5px 9px;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(29, 36, 33, 0.07);
+            color: var(--ink);
+        }
+
+        .toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            background: rgba(29, 36, 33, 0.92);
+            color: #fffaf3;
+            padding: 14px 16px;
+            border-radius: 16px;
+            box-shadow: 0 16px 44px rgba(29, 36, 33, 0.22);
+            opacity: 0;
+            transform: translateY(12px);
+            transition: all 0.22s ease;
+            pointer-events: none;
+            max-width: min(360px, calc(100vw - 40px));
+            line-height: 1.5;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .empty {
+            padding: 18px;
+            border-radius: 16px;
+            background: rgba(29, 36, 33, 0.05);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 1080px) {
+            .health-panel,
+            .distribution-panel,
+            .pushes-panel,
+            .silent-panel {
+                grid-column: span 12;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .shell {
+                width: min(100vw - 16px, 1400px);
+                padding-top: 16px;
+            }
+
+            .hero {
+                padding: 20px;
+            }
+
+            .grid {
+                gap: 14px;
+            }
+
+            .bar-row {
+                grid-template-columns: 110px 1fr 42px;
+            }
+
+            th:nth-child(3),
+            td:nth-child(3),
+            th:nth-child(4),
+            td:nth-child(4) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <section class="hero">
+        <div class="hero-top">
+            <div>
+                <div class="eyebrow">A-Share Operations Console</div>
+                <h1>实时链路运营看板</h1>
+                <p class="subtitle">
+                    把市场状态、公告实时推送、宏观快讯、健康告警和决策日志放进同一个视图，
+                    让“今天为什么发声，为什么装死”不再靠猜。
+                </p>
+            </div>
+            <div class="hero-meta">
+                <span id="healthLevelPill" class="pill neutral">加载中</span>
+                <span id="marketStatePill" class="pill neutral">市场状态</span>
+                <span id="snapshotHealthPill" class="pill neutral">快照链路</span>
+                <span id="generatedAtPill" class="pill neutral">最后刷新 --</span>
+            </div>
+        </div>
+        <div class="actions">
+            <button class="primary" id="refreshSummaryBtn">刷新看板</button>
+            <button class="secondary" id="refreshMarketBtn">刷新市场快照</button>
+            <button class="secondary" id="healthCheckBtn">触发健康巡检</button>
+            <button class="secondary" id="macroScanBtn">触发宏观回扫</button>
+        </div>
+    </section>
+
+    <section class="grid">
+        <div class="panel market-panel">
+            <div class="panel-head">
+                <h2>市场状态</h2>
+                <div class="panel-note">4 态状态机 + 宽度快照</div>
+            </div>
+            <div id="marketGrid" class="market-grid"></div>
+        </div>
+
+        <div class="panel metrics-panel">
+            <div class="panel-head">
+                <h2>健康窗口指标</h2>
+                <div id="metricsNote" class="panel-note">过去 -- 分钟</div>
+            </div>
+            <div id="metricGrid" class="metric-grid"></div>
+        </div>
+
+        <div class="panel health-panel">
+            <div class="panel-head">
+                <h2>运行健康</h2>
+                <div class="panel-note">自动识别高静默和链路失声</div>
+            </div>
+            <div id="warningList" class="warning-list"></div>
+        </div>
+
+        <div class="panel distribution-panel">
+            <div class="panel-head">
+                <h2>24小时推送分布</h2>
+                <div class="panel-note">按推送类型聚合</div>
+            </div>
+            <div id="distributionList" class="distribution-list"></div>
+        </div>
+
+        <div class="panel timeline-panel">
+            <div class="panel-head">
+                <h2>过去12小时节奏</h2>
+                <div class="panel-note">高分公告 / 决策 / 推送 / 宏观事件</div>
+            </div>
+            <div class="timeline-wrap">
+                <div class="timeline-legend">
+                    <span><span class="legend-dot" style="background: rgba(15,118,110,0.84)"></span>高分公告</span>
+                    <span><span class="legend-dot" style="background: rgba(29,36,33,0.38)"></span>决策日志</span>
+                    <span><span class="legend-dot" style="background: rgba(22,101,52,0.84)"></span>实际推送</span>
+                    <span><span class="legend-dot" style="background: rgba(180,83,9,0.84)"></span>宏观事件</span>
+                </div>
+                <div id="timelineGrid" class="timeline-grid"></div>
+            </div>
+        </div>
+
+        <div class="panel pushes-panel">
+            <div class="panel-head">
+                <h2>最近推送</h2>
+                <div class="panel-note">观察系统最近真正发出去的东西</div>
+            </div>
+            <div id="recentPushes"></div>
+        </div>
+
+        <div class="panel silent-panel">
+            <div class="panel-head">
+                <h2>最近静默与高频原因</h2>
+                <div class="panel-note">为什么被降级、跳过、吞掉</div>
+            </div>
+            <div id="silentReasons" class="reason-list" style="margin-bottom: 16px;"></div>
+            <div id="recentDecisions"></div>
+        </div>
+    </section>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+    const ENDPOINTS = {
+        summary: '/api/ops-dashboard/summary',
+        refreshMarket: '/api/ops-dashboard/actions/refresh-market',
+        runHealthCheck: '/api/ops-dashboard/actions/run-health-check',
+        runMacroScan: '/api/ops-dashboard/actions/run-macro-scan'
+    };
+
+    const stateText = {
+        DEFENSIVE: '防守态',
+        NEUTRAL: '中性',
+        RISK_ON: '进攻态',
+        OVERHEAT: '高潮态'
+    };
+
+    const snapshotHealthText = {
+        LIVE: '在线',
+        DEGRADED: '回退中',
+        DISCONNECTED: '失联'
+    };
+
+    const pushTypeText = {
+        REALTIME_OPPORTUNITY: '盘中机会',
+        REALTIME_RISK: '盘中风险',
+        REALTIME_HEALTH_ALERT: '健康告警',
+        MACRO_REALTIME_OPPORTUNITY: '宏观机会',
+        MACRO_REALTIME_RISK: '宏观风险',
+        MARKET_PULSE_OPPORTUNITY: '市场进攻脉冲',
+        MARKET_PULSE_RISK: '市场防守脉冲',
+        POST_CLOSE_RISK_DIGEST: '盘后风险速递',
+        REPORT_ONLY: '仅报告',
+        SILENT: '静默'
+    };
+
+    const elements = {
+        healthLevelPill: document.getElementById('healthLevelPill'),
+        marketStatePill: document.getElementById('marketStatePill'),
+        snapshotHealthPill: document.getElementById('snapshotHealthPill'),
+        generatedAtPill: document.getElementById('generatedAtPill'),
+        marketGrid: document.getElementById('marketGrid'),
+        metricGrid: document.getElementById('metricGrid'),
+        metricsNote: document.getElementById('metricsNote'),
+        warningList: document.getElementById('warningList'),
+        distributionList: document.getElementById('distributionList'),
+        timelineGrid: document.getElementById('timelineGrid'),
+        recentPushes: document.getElementById('recentPushes'),
+        silentReasons: document.getElementById('silentReasons'),
+        recentDecisions: document.getElementById('recentDecisions'),
+        toast: document.getElementById('toast')
+    };
+
+    let refreshTimer = null;
+
+    async function fetchSummary(showSuccess = false) {
+        try {
+            const response = await fetch(ENDPOINTS.summary, { cache: 'no-store' });
+            if (!response.ok) {
+                throw new Error(`加载失败 (${response.status})`);
+            }
+            const data = await response.json();
+            renderDashboard(data);
+            if (showSuccess) {
+                showToast('看板已刷新');
+            }
+        } catch (error) {
+            showToast(`看板加载失败：${error.message}`, true);
+        }
+    }
+
+    async function runAction(endpoint, successMessage) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) {
+                throw new Error(`操作失败 (${response.status})`);
+            }
+            const result = await response.json();
+            showToast(result.message || successMessage, result.success === false);
+            await fetchSummary(false);
+        } catch (error) {
+            showToast(`${successMessage}失败：${error.message}`, true);
+        }
+    }
+
+    function renderDashboard(data) {
+        renderHeader(data);
+        renderMarket(data.marketSnapshot || {});
+        renderMetrics(data.metrics || {});
+        renderWarnings(data.warnings || [], data.healthLevel);
+        renderDistribution(data.pushTypeDistribution || {});
+        renderTimeline(data.timeline || []);
+        renderRecentPushes(data.recentPushes || []);
+        renderSilentReasons(data.topSilentReasons || []);
+        renderRecentDecisions(data.recentSkippedDecisions || []);
+    }
+
+    function renderHeader(data) {
+        const level = data.healthLevel || 'HEALTHY';
+        const marketState = data.marketSnapshot?.marketState || 'NEUTRAL';
+        const snapshotHealth = data.marketSnapshot?.snapshotHealth || 'LIVE';
+        elements.healthLevelPill.className = `pill ${healthClass(level)}`;
+        elements.healthLevelPill.textContent = healthText(level);
+        elements.marketStatePill.className = `pill ${marketClass(marketState)}`;
+        elements.marketStatePill.textContent = `市场 ${stateText[marketState] || marketState}`;
+        elements.snapshotHealthPill.className = `pill ${snapshotHealthClass(snapshotHealth)}`;
+        elements.snapshotHealthPill.textContent = `快照 ${snapshotHealthText[snapshotHealth] || snapshotHealth}`;
+        elements.generatedAtPill.className = 'pill neutral';
+        elements.generatedAtPill.textContent = `刷新于 ${formatTime(data.generatedAt)}`;
+    }
+
+    function renderMarket(snapshot) {
+        const cards = [
+            { label: '当前状态', value: stateText[snapshot.marketState] || '中性', className: marketClass(snapshot.marketState) },
+            { label: '快照链路', value: `${snapshotHealthText[snapshot.snapshotHealth] || '在线'}${snapshot.consecutiveFailureCount ? ` · ${safeInt(snapshot.consecutiveFailureCount)}次` : ''}`, className: snapshotHealthValueClass(snapshot.snapshotHealth) },
+            { label: '数据源', value: snapshot.source || '--', className: 'neutral' },
+            { label: '宽度样本', value: snapshot.breadthSampleSize ? `${safeInt(snapshot.breadthSampleSize)} 只` : '--', className: 'neutral' },
+            { label: '上证 / 深成 / 创业板', value: `${formatPct(snapshot.shChangePct)} / ${formatPct(snapshot.szChangePct)} / ${formatPct(snapshot.cybChangePct)}`, className: marketValueClass(snapshot.shChangePct + snapshot.szChangePct + snapshot.cybChangePct) },
+            { label: '上涨 / 下跌 / 平盘', value: `${safeInt(snapshot.upCount)} / ${safeInt(snapshot.downCount)} / ${safeInt(snapshot.flatCount)}`, className: 'neutral' },
+            { label: '近似涨停 / 跌停', value: `${safeInt(snapshot.limitUpCount)} / ${safeInt(snapshot.limitDownCount)}`, className: snapshot.limitDownCount > snapshot.limitUpCount ? 'negative' : 'positive' },
+            { label: '上涨家数占比', value: `${formatRatio(snapshot.advanceDeclineRatio)}`, className: snapshot.advanceDeclineRatio >= 0.5 ? 'positive' : 'negative' },
+            { label: '快照时间', value: formatTime(snapshot.capturedAt), className: 'neutral' },
+            { label: '最后成功', value: formatTime(snapshot.lastSuccessAt), className: 'neutral' },
+            { label: '下次自动重试', value: formatTime(snapshot.nextRetryAt), className: 'neutral' }
+        ];
+        elements.marketGrid.innerHTML = cards.map(card => `
+            <article class="market-card">
+                <div class="label">${card.label}</div>
+                <div class="value ${card.className}">${card.value}</div>
+            </article>
+        `).join('');
+    }
+
+    function renderMetrics(metrics) {
+        elements.metricsNote.textContent = `过去 ${safeInt(metrics.healthWindowMinutes)} 分钟`;
+        const cards = [
+            ['高分公告', metrics.highSignalNoticeCount, 'A股公告达到实时跟踪阈值'],
+            ['硬风险公告', metrics.hardRiskNoticeCount, '利空公告达到防守态风险阈值'],
+            ['决策日志', metrics.decisionCount, `跳过占比 ${formatRatio(metrics.skippedRatio)}`],
+            ['实际已发送', metrics.sentCount, 'A股实时公告成功发声'],
+            ['宏观风险事件', metrics.macroRiskEventCount, '高分宏观利空快讯'],
+            ['宏观已发送', metrics.macroSentCount, '宏观实时机会与风险合计'],
+            ['市场脉冲', metrics.marketPulseCount, '市场状态机脉冲次数'],
+            ['健康告警', metrics.healthAlertCount, '触发并记录的健康告警']
+        ];
+        elements.metricGrid.innerHTML = cards.map(([label, value, foot]) => `
+            <article class="metric-card">
+                <div class="metric-label">${label}</div>
+                <div class="metric-value">${safeInt(value)}</div>
+                <div class="metric-foot">${foot}</div>
+            </article>
+        `).join('');
+    }
+
+    function renderWarnings(warnings, healthLevel) {
+        if (!warnings.length) {
+            elements.warningList.innerHTML = `<div class="warning-item">当前链路健康，没有命中健康告警。</div>`;
+            return;
+        }
+        const cls = healthLevel === 'CRITICAL' ? 'critical' : 'warn';
+        elements.warningList.innerHTML = warnings.map(item => `
+            <div class="warning-item ${cls}">${escapeHtml(item)}</div>
+        `).join('');
+    }
+
+    function renderDistribution(distribution) {
+        const entries = Object.entries(distribution);
+        if (!entries.length) {
+            elements.distributionList.innerHTML = `<div class="empty">最近 24 小时没有推送记录。</div>`;
+            return;
+        }
+        const max = Math.max(...entries.map(([, value]) => safeInt(value)), 1);
+        elements.distributionList.innerHTML = entries.map(([label, count]) => `
+            <div class="bar-row">
+                <div class="bar-label">${escapeHtml(pushTypeText[label] || label)}</div>
+                <div class="bar-track"><div class="bar-fill ${resolveBarTone(label)}" style="width:${safeInt(count) / max * 100}%"></div></div>
+                <div class="bar-value">${safeInt(count)}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderTimeline(points) {
+        if (!points.length) {
+            elements.timelineGrid.innerHTML = `<div class="empty">暂无时间线数据。</div>`;
+            return;
+        }
+        const max = Math.max(1, ...points.flatMap(point => [
+            safeInt(point.highSignalNoticeCount),
+            safeInt(point.decisionCount),
+            safeInt(point.pushCount),
+            safeInt(point.macroEventCount)
+        ]));
+        elements.timelineGrid.innerHTML = points.map(point => `
+            <div class="timeline-col">
+                <div class="timeline-bars">
+                    <div class="timeline-bar notice" style="height:${Math.max(6, safeInt(point.highSignalNoticeCount) / max * 100)}%"></div>
+                    <div class="timeline-bar decision" style="height:${Math.max(6, safeInt(point.decisionCount) / max * 100)}%"></div>
+                    <div class="timeline-bar push" style="height:${Math.max(6, safeInt(point.pushCount) / max * 100)}%"></div>
+                    <div class="timeline-bar macro" style="height:${Math.max(6, safeInt(point.macroEventCount) / max * 100)}%"></div>
+                </div>
+                <div class="timeline-label">${formatHour(point.bucketStart)}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderRecentPushes(items) {
+        if (!items.length) {
+            elements.recentPushes.innerHTML = `<div class="empty">最近没有推送记录。</div>`;
+            return;
+        }
+        elements.recentPushes.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>类型</th>
+                        <th>对象</th>
+                        <th>标题</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(item => `
+                        <tr>
+                            <td class="code">${formatTime(item.pushedAt)}</td>
+                            <td><span class="tag">${escapeHtml(pushTypeText[item.pushType] || item.pushType || '-')}</span></td>
+                            <td>
+                                <strong>${escapeHtml(item.stockName || item.macroThemeName || '系统事件')}</strong>
+                                <span class="code">${escapeHtml(item.stockCode || item.signalSide || '-')}</span>
+                            </td>
+                            <td>
+                                <strong>${escapeHtml(item.title || '-')}</strong>
+                                <span>${escapeHtml(item.decisionReason || '-')}</span>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    function renderSilentReasons(items) {
+        if (!items.length) {
+            elements.silentReasons.innerHTML = `<div class="empty">最近没有明显的静默原因聚集。</div>`;
+            return;
+        }
+        const max = Math.max(...items.map(item => safeInt(item.count)), 1);
+        elements.silentReasons.innerHTML = items.map(item => `
+            <div class="bar-row">
+                <div class="bar-label">${escapeHtml(item.label || '未记录原因')}</div>
+                <div class="bar-track"><div class="bar-fill warn" style="width:${safeInt(item.count) / max * 100}%"></div></div>
+                <div class="bar-value">${safeInt(item.count)}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderRecentDecisions(items) {
+        if (!items.length) {
+            elements.recentDecisions.innerHTML = `<div class="empty">最近没有静默决策样本。</div>`;
+            return;
+        }
+        elements.recentDecisions.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>类型</th>
+                        <th>对象</th>
+                        <th>原因</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(item => `
+                        <tr>
+                            <td class="code">${formatTime(item.decidedAt)}</td>
+                            <td><span class="tag">${escapeHtml(pushTypeText[item.pushType] || item.pushType || '-')}</span></td>
+                            <td>
+                                <strong>${escapeHtml(item.stockName || '系统')}</strong>
+                                <span class="code">${escapeHtml(item.stockCode || item.marketState || '-')}</span>
+                            </td>
+                            <td>
+                                <strong>${escapeHtml(item.title || '-')}</strong>
+                                <span>${escapeHtml(item.decisionReason || '-')}</span>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    function showToast(message, isError = false) {
+        elements.toast.textContent = message;
+        elements.toast.style.background = isError ? 'rgba(180, 35, 24, 0.92)' : 'rgba(29, 36, 33, 0.92)';
+        elements.toast.classList.add('show');
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => elements.toast.classList.remove('show'), 2600);
+    }
+
+    function healthText(level) {
+        return ({
+            HEALTHY: '系统健康',
+            WARN: '需要关注',
+            CRITICAL: '需要立即处理'
+        })[level] || '系统健康';
+    }
+
+    function healthClass(level) {
+        return ({
+            HEALTHY: 'healthy',
+            WARN: 'warn',
+            CRITICAL: 'critical'
+        })[level] || 'neutral';
+    }
+
+    function marketClass(state) {
+        return ({
+            DEFENSIVE: 'critical',
+            OVERHEAT: 'warn',
+            RISK_ON: 'healthy',
+            NEUTRAL: 'neutral'
+        })[state] || 'neutral';
+    }
+
+    function snapshotHealthClass(health) {
+        return ({
+            LIVE: 'healthy',
+            DEGRADED: 'warn',
+            DISCONNECTED: 'critical'
+        })[health] || 'neutral';
+    }
+
+    function marketValueClass(value) {
+        if (typeof value !== 'number') return 'neutral';
+        if (value > 0) return 'positive';
+        if (value < 0) return 'negative';
+        return 'neutral';
+    }
+
+    function snapshotHealthValueClass(health) {
+        return ({
+            LIVE: 'positive',
+            DEGRADED: 'warn',
+            DISCONNECTED: 'negative'
+        })[health] || 'neutral';
+    }
+
+    function resolveBarTone(label) {
+        if (label === 'REALTIME_HEALTH_ALERT' || label === 'MACRO_REALTIME_RISK' || label === 'MARKET_PULSE_RISK') {
+            return 'danger';
+        }
+        if (label === 'POST_CLOSE_RISK_DIGEST') {
+            return 'warn';
+        }
+        return '';
+    }
+
+    function formatTime(value) {
+        if (!value) return '--';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return new Intl.DateTimeFormat('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(date).replace(',', '');
+    }
+
+    function formatHour(value) {
+        if (!value) return '--';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '--';
+        return `${String(date.getHours()).padStart(2, '0')}:00`;
+    }
+
+    function formatPct(value) {
+        if (typeof value !== 'number') return '--';
+        return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+    }
+
+    function formatRatio(value) {
+        if (typeof value !== 'number') return '--';
+        return `${(value * 100).toFixed(0)}%`;
+    }
+
+    function safeInt(value) {
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    function escapeHtml(input) {
+        return String(input ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    document.getElementById('refreshSummaryBtn').addEventListener('click', () => fetchSummary(true));
+    document.getElementById('refreshMarketBtn').addEventListener('click', () => runAction(ENDPOINTS.refreshMarket, '刷新市场快照'));
+    document.getElementById('healthCheckBtn').addEventListener('click', () => runAction(ENDPOINTS.runHealthCheck, '执行健康巡检'));
+    document.getElementById('macroScanBtn').addEventListener('click', () => runAction(ENDPOINTS.runMacroScan, '执行宏观回扫'));
+
+    fetchSummary(false);
+    setInterval(() => fetchSummary(false), 60000);
+</script>
+</body>
+</html>

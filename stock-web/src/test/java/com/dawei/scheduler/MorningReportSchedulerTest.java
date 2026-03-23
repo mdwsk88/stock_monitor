@@ -55,6 +55,7 @@ class MorningReportSchedulerTest {
 
         scheduler.pushAMorningReport();
         scheduler.pushAEveningReport();
+        scheduler.pushAPostCloseRiskDigest();
         scheduler.pushUSMorningReport();
         scheduler.pushUSEveningReport();
 

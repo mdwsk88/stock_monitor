@@ -47,6 +47,8 @@ public class MorningReportScheduler {
     private static final LocalTime A_MORNING_WINDOW_END = LocalTime.of(9, 40);
     private static final LocalTime A_EVENING_WINDOW_START = LocalTime.of(15, 0);
     private static final LocalTime A_EVENING_WINDOW_END = LocalTime.of(16, 30);
+    private static final LocalTime A_POST_CLOSE_WINDOW_START = LocalTime.of(17, 30);
+    private static final LocalTime A_POST_CLOSE_WINDOW_END = LocalTime.of(19, 30);
     private static final LocalTime US_MORNING_WINDOW_START = LocalTime.of(7, 0);
     private static final LocalTime US_MORNING_WINDOW_END = LocalTime.of(9, 0);
     private static final LocalTime US_EVENING_WINDOW_START = LocalTime.of(20, 0);
@@ -244,7 +246,7 @@ public class MorningReportScheduler {
         try {
             // 数据提取范围：当天9:00到15:00（过去6小时）
             LocalDateTime startTime = now.withHour(9).withMinute(0).withSecond(0);
-            LocalDateTime endTime = now.withHour(15).withMinute(0).withSecond(0);
+            LocalDateTime endTime = now.withSecond(0).withNano(0);
             log.info("【A股盘后复盘】数据提取范围: {} 至 {}", startTime, endTime);
             
             AReportFusionContext reportContext = aReportFusionService.buildContext(
@@ -279,6 +281,53 @@ public class MorningReportScheduler {
             log.error("【A股盘后复盘】执行失败: {}", e.getMessage(), e);
             String errorMsg = buildAStockErrorEveningMessage(today, e.getMessage());
             weComApi.sendMarkdownMessageAsync(errorMsg, WeComApi.MarketType.A);
+        }
+    }
+
+    @Scheduled(cron = "0 30 18 * * ?")
+    public void pushAPostCloseRiskDigest() {
+        if (skipScheduledRuntime("A股盘后风险速递")) {
+            return;
+        }
+        runAPostCloseRiskDigest(false);
+    }
+
+    public void pushAPostCloseRiskDigestManually() {
+        runAPostCloseRiskDigest(true);
+    }
+
+    private void runAPostCloseRiskDigest(boolean manualTrigger) {
+        LocalDateTime now = LocalDateTime.now();
+        DayOfWeek dayOfWeek = now.getDayOfWeek();
+        if (!manualTrigger && (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY)) {
+            log.info("【A股盘后风险速递】今天是{}，股市休市，静默处理", dayOfWeek);
+            return;
+        }
+        if (shouldSkipScheduledWindow(now, manualTrigger, A_POST_CLOSE_WINDOW_START, A_POST_CLOSE_WINDOW_END, "A股盘后风险速递")) {
+            return;
+        }
+
+        String today = now.format(DATE_FORMATTER);
+        try {
+            LocalDateTime startTime = now.withHour(15).withMinute(0).withSecond(0).withNano(0);
+            LocalDateTime endTime = now.withSecond(0).withNano(0);
+            AReportFusionContext reportContext = aReportFusionService.buildContext(
+                    startTime,
+                    endTime,
+                    A_TOP_N,
+                    A_MACRO_THEME_LIMIT,
+                    A_RESONANCE_LIMIT
+            );
+            String markdown = reportContext.getRiskAlerts().isEmpty() && reportContext.getOpportunityAlerts().isEmpty()
+                    ? buildAPostCloseNoDataMessage(today)
+                    : buildAPostCloseRiskDigestMessage(today, reportContext);
+            weComApi.sendMarkdownMessageAsync(markdown, WeComApi.MarketType.A);
+            log.info("【A股盘后风险速递】推送成功，风险={}，机会={}",
+                    reportContext.getRiskAlerts().size(),
+                    reportContext.getOpportunityAlerts().size());
+        } catch (Exception e) {
+            log.error("【A股盘后风险速递】执行失败: {}", e.getMessage(), e);
+            weComApi.sendMarkdownMessageAsync(buildAPostCloseErrorMessage(today, e.getMessage()), WeComApi.MarketType.A);
         }
     }
 
@@ -409,6 +458,55 @@ public class MorningReportScheduler {
                "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
                "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
                "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+    }
+
+    private String buildAPostCloseRiskDigestMessage(String today, AReportFusionContext context) {
+        StringBuilder builder = new StringBuilder()
+                .append("# 🌇 A股盘后风险速递 | ").append(today).append("\n\n")
+                .append("收盘后公告窗口（15:00-当前）扫描完成，以下为最值得优先处理的新增风险与补充机会。\n\n");
+
+        if (!context.getRiskAlerts().isEmpty()) {
+            builder.append("## 风险优先级\n");
+            context.getRiskAlerts().stream().limit(5).forEach(alert -> appendDigestLine(builder, alert, true));
+            builder.append("\n");
+        }
+
+        if (!context.getOpportunityAlerts().isEmpty()) {
+            builder.append("## 机会补充\n");
+            context.getOpportunityAlerts().stream().limit(3).forEach(alert -> appendDigestLine(builder, alert, false));
+            builder.append("\n");
+        }
+
+        builder.append("<font color=\"comment\">定位：服务收盘后公告密集披露窗口，优先补齐当日 15:30 之后才出现的硬风险和强催化。</font>");
+        return builder.toString();
+    }
+
+    private void appendDigestLine(StringBuilder builder, StockAlertDTO<AStockRss> alert, boolean risk) {
+        if (alert == null || alert.getStock() == null) {
+            return;
+        }
+        AStockRss stock = alert.getStock();
+        builder.append("> **")
+                .append(stock.getStockName()).append("(").append(stock.getStockCode()).append(")")
+                .append("** | <font color=\"").append(risk ? "warning" : "info").append("\">")
+                .append(stock.getEventType()).append("</font>")
+                .append(" | 事件评分 ").append(alert.getSignalScore())
+                .append(" | 公告数 ").append(alert.getFrequency()).append("\n");
+        builder.append("> ").append(stock.getTitle()).append("\n");
+    }
+
+    private String buildAPostCloseNoDataMessage(String today) {
+        return "# 🌇 A股盘后风险速递 | " + today + "\n\n"
+                + "收盘后公告窗口（15:00-当前）扫描完成。\n\n"
+                + "<font color=\"comment\">暂未识别到新增的高优先级风险或强催化公告，保持常规观察即可。</font>";
+    }
+
+    private String buildAPostCloseErrorMessage(String today, String errorMsg) {
+        return "# 🌇 A股盘后风险速递 | " + today + "\n\n"
+                + "<font color=\"warning\">❌ 收盘后公告扫描失败："
+                + errorMsg
+                + "</font>\n\n"
+                + "<font color=\"comment\">请检查公告抓取链路或稍后手动重试。</font>";
     }
 
     /**

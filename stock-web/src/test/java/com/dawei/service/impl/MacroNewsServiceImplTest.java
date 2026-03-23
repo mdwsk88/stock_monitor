@@ -61,6 +61,8 @@ class MacroNewsServiceImplTest {
     private ThemeWatchlistMapper themeWatchlistMapper;
     @Mock
     private ThemeAutoPoolService themeAutoPoolService;
+    @Mock
+    private MacroRealtimePushService macroRealtimePushService;
 
     private MacroNewsServiceImpl macroNewsService;
 
@@ -77,7 +79,8 @@ class MacroNewsServiceImplTest {
                 macroThemeStockRelMapper,
                 relationService,
                 signalService,
-                themeAutoPoolService
+                themeAutoPoolService,
+                macroRealtimePushService
         );
         lenient().when(aStockRssMapper.selectMaps(any())).thenReturn(List.of());
         lenient().when(themeAutoPoolService.listEnabled()).thenReturn(List.of());
@@ -152,6 +155,7 @@ class MacroNewsServiceImplTest {
         assertEquals(0, summary.getFiltered());
         verify(macroNewsRawMapper, times(5)).insertIgnore(any());
         verify(macroThemeEventMapper, times(5)).insertIgnore(any());
+        verify(macroRealtimePushService, times(5)).handlePersistedEvent(any());
     }
 
     @Test
@@ -242,6 +246,7 @@ class MacroNewsServiceImplTest {
         assertEquals(0, summary.getFiltered());
         verify(macroNewsRawMapper, times(4)).insertIgnore(any());
         verify(macroThemeEventMapper, times(4)).insertIgnore(any());
+        verify(macroRealtimePushService, times(4)).handlePersistedEvent(any());
     }
 
     @Test

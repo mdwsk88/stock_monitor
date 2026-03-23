@@ -59,6 +59,10 @@ class WeComApiTest {
         card.setSignalScore(93);
         card.setEventType("重大合同");
         card.setTitle("阳谷华泰:关于中标8亿元无人机复材订单的公告");
+        card.setMarketStateLabel("进攻态");
+        card.setPositionLabel("领军核心");
+        card.setPositionReason("事件评分进入主线级；命中宏观主线共振");
+        card.setTradeHint("可作为主线锚点，优先观察开盘承接");
         card.setConclusion("阳谷华泰(300121) 刚披露高价值利多公告，属于盘中可跟踪的强催化。");
         card.setReasoning("重大合同通常直接抬升订单兑现预期。");
         card.setRiskHint("利好预警不等于直接涨停，仍需看资金承接。");
@@ -72,6 +76,9 @@ class WeComApiTest {
 
         assertTrue(content.contains("A股盘中突发预警"));
         assertTrue(content.contains("阳谷华泰(300121)"));
+        assertTrue(content.contains("市场状态"));
+        assertTrue(content.contains("身位判定"));
+        assertTrue(content.contains("交易动作"));
         assertTrue(content.contains("低空经济"));
         assertTrue(content.contains("融合分 148"));
         assertTrue(content.contains("仅供盘中研究与信息跟踪"));

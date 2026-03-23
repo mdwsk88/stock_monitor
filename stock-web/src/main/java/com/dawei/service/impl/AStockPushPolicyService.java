@@ -1,14 +1,20 @@
 package com.dawei.service.impl;
 
 import com.dawei.config.StockFilterConfig;
+import com.dawei.entity.AReportOpportunityInsight;
+import com.dawei.entity.AStockRealtimeContext;
 import com.dawei.entity.AStockPushDecision;
+import com.dawei.entity.MarketSnapshot;
+import com.dawei.entity.MarketSnapshotHealth;
+import com.dawei.entity.MarketState;
 import com.dawei.entity.AStockPushType;
 import com.dawei.entity.AStockRss;
+import com.dawei.utils.AStockMarketClock;
+import com.dawei.utils.MarketStateSafety;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
-import java.time.DayOfWeek;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -18,11 +24,6 @@ import java.util.Set;
  */
 @Service
 public class AStockPushPolicyService {
-
-    private static final LocalTime MORNING_SESSION_START = LocalTime.of(9, 15);
-    private static final LocalTime MORNING_SESSION_END = LocalTime.of(11, 30);
-    private static final LocalTime AFTERNOON_SESSION_START = LocalTime.of(12, 55);
-    private static final LocalTime AFTERNOON_SESSION_END = LocalTime.of(15, 0);
 
     private static final Set<String> OPPORTUNITY_EVENT_TYPES = Set.of(
             "重大合同", "并购重组", "业绩兑现", "产品获批", "回购增持"
@@ -47,10 +48,15 @@ public class AStockPushPolicyService {
     }
 
     public AStockPushDecision classify(AStockRss notice, LocalDateTime now) {
+        return classify(notice, now, MarketSnapshot.neutral(now, "LEGACY"));
+    }
+
+    public AStockPushDecision classify(AStockRss notice, LocalDateTime now, MarketSnapshot marketSnapshot) {
         if (notice == null || notice.getTitle() == null || notice.getTitle().isBlank()) {
             return new AStockPushDecision(AStockPushType.SILENT, "公告为空", false, false);
         }
 
+        MarketState marketState = effectiveMarketState(marketSnapshot);
         int signalScore = safeScore(notice.getSignalScore());
         boolean critical = signalScore >= filterConfig.getARealtimeCriticalThreshold();
         String eventType = normalize(notice.getEventType());
@@ -64,53 +70,100 @@ public class AStockPushPolicyService {
             return new AStockPushDecision(AStockPushType.SILENT, "命中实时静默规则", critical, false);
         }
 
-        boolean withinTradingSession = isTradingSession(now);
+        LocalDateTime eventTime = resolveEventTime(notice, now);
+        boolean withinTradingSession = isTradingSession(eventTime);
         if (!withinTradingSession) {
-            return new AStockPushDecision(AStockPushType.REPORT_ONLY, "非盘中交易窗口", critical, false);
+            return new AStockPushDecision(AStockPushType.REPORT_ONLY, withStateSuffix("非盘中交易窗口", marketSnapshot, marketState), critical, false);
         }
 
-        if (isOpportunityRealtime(notice, signalScore)) {
-            return new AStockPushDecision(AStockPushType.REALTIME_OPPORTUNITY, "高分利多白名单事件", critical, true);
+        if (marketState == MarketState.DEFENSIVE && "利多".equals(notice.getSignalSide()) && !critical) {
+            return new AStockPushDecision(AStockPushType.REPORT_ONLY, withStateSuffix("防守态抑制盘中追涨", marketSnapshot, marketState), critical, true);
         }
 
-        if (isRiskRealtime(notice, signalScore)) {
-            return new AStockPushDecision(AStockPushType.REALTIME_RISK, "高分利空白名单事件", critical, true);
+        if (isOpportunityRealtime(notice, signalScore, marketState)) {
+            return new AStockPushDecision(AStockPushType.REALTIME_OPPORTUNITY, withStateSuffix("高分利多白名单事件", marketSnapshot, marketState), critical, true);
         }
 
-        return new AStockPushDecision(AStockPushType.REPORT_ONLY, "仅保留至晨报/复盘", critical, withinTradingSession);
+        if (isRiskRealtime(notice, signalScore, marketState)) {
+            return new AStockPushDecision(AStockPushType.REALTIME_RISK, withStateSuffix("高分利空白名单事件", marketSnapshot, marketState), critical, true);
+        }
+
+        return new AStockPushDecision(AStockPushType.REPORT_ONLY, withStateSuffix("仅保留至晨报/复盘", marketSnapshot, marketState), critical, withinTradingSession);
+    }
+
+    public AStockPushDecision refineRealtimeDecision(AStockRss notice,
+                                                     AStockPushDecision initialDecision,
+                                                     MarketSnapshot marketSnapshot,
+                                                     AStockRealtimeContext realtimeContext,
+                                                     AReportOpportunityInsight opportunityInsight) {
+        if (initialDecision == null || !initialDecision.shouldSendRealtime()) {
+            return initialDecision;
+        }
+        if (initialDecision.getPushType() != AStockPushType.REALTIME_OPPORTUNITY) {
+            return initialDecision;
+        }
+
+        MarketState marketState = effectiveMarketState(marketSnapshot);
+        boolean critical = initialDecision.isCritical();
+        String positionLabel = opportunityInsight != null ? opportunityInsight.getPositionLabel() : "";
+
+        if (marketState == MarketState.OVERHEAT && !"领军核心".equals(positionLabel) && !critical) {
+            return new AStockPushDecision(
+                    AStockPushType.REPORT_ONLY,
+                    withStateSuffix("高潮态仅放行领军核心，后排机会降级为报告观察", marketSnapshot, marketState),
+                    critical,
+                    initialDecision.isWithinTradingSession()
+            );
+        }
+
+        if (marketState == MarketState.RISK_ON
+                && "观察名单".equals(positionLabel)
+                && (realtimeContext == null || !realtimeContext.hasResonance())
+                && !critical) {
+            return new AStockPushDecision(
+                    AStockPushType.REPORT_ONLY,
+                    withStateSuffix("进攻态下边际催化需等待主线确认", marketSnapshot, marketState),
+                    critical,
+                    initialDecision.isWithinTradingSession()
+            );
+        }
+
+        if (opportunityInsight == null || StringUtils.isBlank(positionLabel)) {
+            return initialDecision;
+        }
+        return new AStockPushDecision(
+                initialDecision.getPushType(),
+                initialDecision.getReason() + " | 身位=" + positionLabel,
+                critical,
+                initialDecision.isWithinTradingSession()
+        );
     }
 
     boolean isTradingSession(LocalDateTime now) {
-        if (now == null) {
-            return false;
-        }
-        DayOfWeek dayOfWeek = now.getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
-            return false;
-        }
-        LocalTime current = now.toLocalTime();
-        boolean morning = !current.isBefore(MORNING_SESSION_START) && !current.isAfter(MORNING_SESSION_END);
-        boolean afternoon = !current.isBefore(AFTERNOON_SESSION_START) && !current.isAfter(AFTERNOON_SESSION_END);
-        return morning || afternoon;
+        return AStockMarketClock.isTradingSession(now);
     }
 
-    private boolean isOpportunityRealtime(AStockRss notice, int signalScore) {
+    private boolean isOpportunityRealtime(AStockRss notice, int signalScore, MarketState marketState) {
         if (!"利多".equals(notice.getSignalSide())) {
+            return false;
+        }
+        if (marketState == MarketState.DEFENSIVE) {
             return false;
         }
         if (!OPPORTUNITY_EVENT_TYPES.contains(normalize(notice.getEventType()))) {
             return false;
         }
+        int threshold = resolveOpportunityThreshold(marketState);
         if ("回购增持".equals(normalize(notice.getEventType()))) {
-            return signalScore >= Math.max(filterConfig.getARealtimeOpportunityThreshold(), 90);
+            return signalScore >= Math.max(threshold, 90);
         }
-        return signalScore >= filterConfig.getARealtimeOpportunityThreshold();
+        return signalScore >= threshold;
     }
 
-    private boolean isRiskRealtime(AStockRss notice, int signalScore) {
+    private boolean isRiskRealtime(AStockRss notice, int signalScore, MarketState marketState) {
         return "利空".equals(notice.getSignalSide())
                 && RISK_EVENT_TYPES.contains(normalize(notice.getEventType()))
-                && signalScore >= filterConfig.getARealtimeRiskThreshold();
+                && signalScore >= resolveRiskThreshold(marketState);
     }
 
     private boolean shouldSilenceImmediately(String title, String eventType, boolean critical) {
@@ -125,6 +178,48 @@ public class AStockPushPolicyService {
 
     private int safeScore(Integer signalScore) {
         return signalScore == null ? 0 : signalScore;
+    }
+
+    private int resolveOpportunityThreshold(MarketState marketState) {
+        return switch (marketState) {
+            case RISK_ON -> filterConfig.getARealtimeOpportunityThresholdRiskOn();
+            case OVERHEAT -> filterConfig.getARealtimeOpportunityThresholdOverheat();
+            default -> filterConfig.getARealtimeOpportunityThreshold();
+        };
+    }
+
+    private int resolveRiskThreshold(MarketState marketState) {
+        return marketState == MarketState.DEFENSIVE
+                ? filterConfig.getARealtimeRiskThresholdDefensive()
+                : filterConfig.getARealtimeRiskThreshold();
+    }
+
+    private LocalDateTime resolveEventTime(AStockRss notice, LocalDateTime now) {
+        if (notice != null && notice.getPubDate() != null) {
+            return notice.getPubDate();
+        }
+        return now;
+    }
+
+    private MarketState effectiveMarketState(MarketSnapshot marketSnapshot) {
+        return MarketStateSafety.normalize(marketSnapshot, filterConfig.getMarketBreadthSampleWarnThreshold());
+    }
+
+    private String withStateSuffix(String reason, MarketSnapshot marketSnapshot, MarketState marketState) {
+        StringBuilder builder = new StringBuilder(reason)
+                .append(" | 市场状态=")
+                .append(marketState.getLabel());
+        if (marketSnapshot != null
+                && marketSnapshot.getSnapshotHealth() != null
+                && marketSnapshot.getSnapshotHealth() != MarketSnapshotHealth.LIVE) {
+            builder.append(" | 快照=").append(marketSnapshot.getSnapshotHealth().getLabel());
+        }
+        if (MarketStateSafety.hasNoBreadth(marketSnapshot)) {
+            builder.append(" | 宽度=缺失");
+        } else if (MarketStateSafety.hasLowConfidenceSampleBreadth(marketSnapshot, filterConfig.getMarketBreadthSampleWarnThreshold())) {
+            builder.append(" | 宽度=低置信样本");
+        }
+        return builder.toString();
     }
 
     private String normalize(String value) {

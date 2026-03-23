@@ -336,6 +336,7 @@ public class WeComApi {
                 .append(riskAlert ? "风险预警" : "突发预警")
                 .append("\n\n")
                 .append("> **标的**：").append(card.getStockName()).append("(").append(card.getStockCode()).append(")\n")
+                .append("> **市场状态**：").append(card.getMarketStateLabel() != null ? card.getMarketStateLabel() : "中性").append("\n")
                 .append("> **定性**：<font color=\"")
                 .append(riskAlert ? "warning" : "info")
                 .append("\">").append(card.getSeverityLabel()).append("</font>")
@@ -343,6 +344,16 @@ public class WeComApi {
                 .append("> **核心公告**：").append(card.getTitle()).append("\n")
                 .append("> **结论**：").append(card.getConclusion()).append("\n")
                 .append("> **推演**：").append(card.getReasoning()).append("\n");
+
+        if (!riskAlert && card.getPositionLabel() != null && !card.getPositionLabel().isBlank()) {
+            builder.append("> **身位判定**：<font color=\"")
+                    .append(card.getPositionColorTag())
+                    .append("\">").append(card.getPositionLabel()).append("</font>");
+            if (card.getPositionReason() != null && !card.getPositionReason().isBlank()) {
+                builder.append(" | ").append(card.getPositionReason());
+            }
+            builder.append("\n");
+        }
 
         if (card.getMacroThemeName() != null && !card.getMacroThemeName().isBlank()) {
             builder.append("> **主线共振**：【").append(card.getMacroThemeName()).append("】");
@@ -359,6 +370,10 @@ public class WeComApi {
             if (card.getMacroTitle() != null && !card.getMacroTitle().isBlank()) {
                 builder.append("> **主题快讯**：").append(card.getMacroTitle()).append("\n");
             }
+        }
+
+        if (!riskAlert && card.getTradeHint() != null && !card.getTradeHint().isBlank()) {
+            builder.append("> **交易动作**：").append(card.getTradeHint()).append("\n");
         }
 
         builder.append("> **提醒**：").append(card.getRiskHint()).append("\n\n")

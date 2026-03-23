@@ -18,8 +18,10 @@ public class AReportFusionContext {
 
     private LocalDateTime windowStart;
     private LocalDateTime windowEnd;
+    private MarketSnapshot marketSnapshot;
     private List<MacroThemeEvent> macroThemes = new ArrayList<>();
     private List<AReportResonanceCard> resonanceCandidates = new ArrayList<>();
+    private List<AReportOpportunityInsight> opportunityInsights = new ArrayList<>();
     private List<StockAlertDTO<AStockRss>> opportunityAlerts = new ArrayList<>();
     private List<StockAlertDTO<AStockRss>> riskAlerts = new ArrayList<>();
 

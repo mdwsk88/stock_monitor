@@ -1,12 +1,15 @@
 package com.dawei.service.impl;
 
 import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.AReportOpportunityInsight;
 import com.dawei.entity.AReportResonanceCard;
 import com.dawei.entity.AStockRss;
+import com.dawei.entity.MarketSnapshot;
 import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.service.AReportFusionService;
 import com.dawei.service.MacroNewsService;
+import com.dawei.service.MarketStateService;
 import com.dawei.service.StockRankService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -58,14 +61,20 @@ public class AReportFusionServiceImpl implements AReportFusionService {
 
     private final StockRankService stockRankService;
     private final MacroNewsService macroNewsService;
+    private final MarketStateService marketStateService;
     private final AStockReportClassifier aStockReportClassifier;
+    private final AReportOpportunityInsightService opportunityInsightService;
 
     public AReportFusionServiceImpl(StockRankService stockRankService,
                                     MacroNewsService macroNewsService,
-                                    AStockReportClassifier aStockReportClassifier) {
+                                    MarketStateService marketStateService,
+                                    AStockReportClassifier aStockReportClassifier,
+                                    AReportOpportunityInsightService opportunityInsightService) {
         this.stockRankService = stockRankService;
         this.macroNewsService = macroNewsService;
+        this.marketStateService = marketStateService;
         this.aStockReportClassifier = aStockReportClassifier;
+        this.opportunityInsightService = opportunityInsightService;
     }
 
     @Override
@@ -87,14 +96,22 @@ public class AReportFusionServiceImpl implements AReportFusionService {
                 endTime,
                 Math.max(MIN_MACRO_POOL_LIMIT, Math.max(effectiveMacroLimit, effectiveResonanceLimit) * MACRO_POOL_MULTIPLIER)
         );
+        MarketSnapshot marketSnapshot = marketStateService.getLatestSnapshot();
         List<AReportResonanceCard> resonanceCards = buildResonanceCards(rankedAlerts, macroThemePool, endTime, effectiveResonanceLimit);
         List<MacroThemeEvent> macroThemes = selectMacroThemesForDisplay(macroThemePool, resonanceCards, effectiveMacroLimit);
+        List<AReportOpportunityInsight> opportunityInsights = opportunityInsightService.buildInsights(
+                sections.opportunities(),
+                resonanceCards,
+                marketSnapshot
+        );
 
         AReportFusionContext context = new AReportFusionContext();
         context.setWindowStart(startTime);
         context.setWindowEnd(endTime);
+        context.setMarketSnapshot(marketSnapshot);
         context.setMacroThemes(macroThemes);
         context.setResonanceCandidates(resonanceCards);
+        context.setOpportunityInsights(opportunityInsights);
         context.setOpportunityAlerts(sections.opportunities());
         context.setRiskAlerts(sections.risks());
         return context;

@@ -21,6 +21,9 @@
 2. 让模型优先走摘要、事件卡、主线和共振工具
 3. 只在需要原始公告时再调用 `queryRawAStockNotices`
 4. 不要再把 `WebFetchTool` 暴露给 A 股问答链路
+5. 对“什么是换手率”“主线退潮怎么看”这类通用概念题，允许模型直接回答，不要强行走工具
+6. 对估值、盘口、实时价格、K线形态这类当前工具不覆盖的问题，要明确能力边界，不要编造
+7. 在系统提示词最前面写清楚边界控制：禁止跨界闲聊、禁止无数据股评、禁止确定性交易指令、失败时必须附替代问法
 
 补充两条关键口径：
 
@@ -37,9 +40,11 @@
 
 ## 使用文档
 
-- 企业微信系统提示词（可直接复制版）：[wecom-robot-system-prompt.md](docs/wecom-robot-system-prompt.md)
+- 企业微信系统提示词（直接复制纯文本）：[wecom-robot-system-prompt.txt](docs/wecom-robot-system-prompt.txt)
+- 企业微信系统提示词说明页：[wecom-robot-system-prompt.md](docs/wecom-robot-system-prompt.md)
 - 系统提示词模板：[wecom-a-stock-robot-system-prompt.md](src/main/resources/prompts/wecom-a-stock-robot-system-prompt.md)
 - 群公告文档：[wecom-group-announcement.md](docs/wecom-group-announcement.md)
+- 外层边界控制实施方案：[wecom-boundary-control-plan.md](docs/wecom-boundary-control-plan.md)
 
 ## MCP 端点
 

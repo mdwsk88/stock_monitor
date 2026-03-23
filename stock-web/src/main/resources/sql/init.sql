@@ -182,7 +182,44 @@ CREATE TABLE `a_stock_push_log` (
 
 
 -- --------------------------------------------------------
--- 8. 主题观察池映射表
+-- 8. A股实时推送决策日志
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `a_stock_push_decision_log`;
+
+CREATE TABLE `a_stock_push_decision_log` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `push_key` varchar(180) DEFAULT NULL COMMENT '实时推送去重键',
+  `stock_code` varchar(20) DEFAULT NULL COMMENT '股票代码',
+  `stock_name` varchar(50) DEFAULT NULL COMMENT '股票名称',
+  `push_type` varchar(40) DEFAULT NULL COMMENT '最终推送类型：SILENT/REPORT_ONLY/REALTIME_OPPORTUNITY/REALTIME_RISK',
+  `signal_side` varchar(20) DEFAULT NULL COMMENT '信号方向：利多/利空/中性',
+  `signal_score` int DEFAULT 0 COMMENT '公告信号分',
+  `event_type` varchar(50) DEFAULT NULL COMMENT '事件类型',
+  `title` varchar(500) DEFAULT NULL COMMENT '代表公告标题',
+  `market_state` varchar(20) DEFAULT NULL COMMENT '市场状态：DEFENSIVE/NEUTRAL/RISK_ON/OVERHEAT',
+  `should_send_realtime` tinyint(1) DEFAULT 0 COMMENT '是否进入实时推送',
+  `critical` tinyint(1) DEFAULT 0 COMMENT '是否核弹级事件',
+  `within_trading_session` tinyint(1) DEFAULT 0 COMMENT '是否命中交易时段',
+  `cooldown_hit` tinyint(1) DEFAULT 0 COMMENT '是否命中冷却期',
+  `send_status` varchar(20) DEFAULT NULL COMMENT '最终结果：SKIPPED/SENT/FAILED',
+  `failure_reason` varchar(255) DEFAULT NULL COMMENT '发送失败原因',
+  `macro_theme_name` varchar(50) DEFAULT NULL COMMENT '命中的宏观主题',
+  `resonance_score` int DEFAULT 0 COMMENT '共振分',
+  `position_label` varchar(32) DEFAULT NULL COMMENT '身位标签：领军核心/高弹性跟风/观察名单',
+  `decision_reason` varchar(255) DEFAULT NULL COMMENT '决策原因',
+  `event_time` datetime DEFAULT NULL COMMENT '公告事件时间',
+  `decided_at` datetime DEFAULT NULL COMMENT '做出决策时间',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_push_decision_time` (`decided_at`),
+  KEY `idx_push_decision_stock_time` (`stock_code`,`decided_at`),
+  KEY `idx_push_decision_status_time` (`send_status`,`decided_at`),
+  KEY `idx_push_decision_key_time` (`push_key`,`decided_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='A股实时推送决策日志';
+
+
+-- --------------------------------------------------------
+-- 9. 主题观察池映射表
 -- --------------------------------------------------------
 DROP TABLE IF EXISTS `a_theme_watchlist`;
 
