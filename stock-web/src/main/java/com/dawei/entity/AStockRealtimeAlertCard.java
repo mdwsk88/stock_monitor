@@ -23,6 +23,10 @@ public class AStockRealtimeAlertCard {
     private String conclusion;
     private String reasoning;
     private String riskHint;
+    private String marketStateLabel;
+    private String positionLabel;
+    private String positionReason;
+    private String tradeHint;
     private String macroThemeName;
     private String macroTitle;
     private Integer macroSignalScore;
@@ -31,5 +35,15 @@ public class AStockRealtimeAlertCard {
 
     public String getEmoji() {
         return pushType == AStockPushType.REALTIME_RISK ? "⚠️" : "🚨";
+    }
+
+    public String getPositionColorTag() {
+        if ("领军核心".equals(positionLabel)) {
+            return "warning";
+        }
+        if ("高弹性跟风".equals(positionLabel)) {
+            return "info";
+        }
+        return "comment";
     }
 }

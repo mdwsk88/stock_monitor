@@ -1,6 +1,11 @@
 package com.dawei.controller;
 
+import com.dawei.entity.AStockPushHealthCheckResult;
+import com.dawei.entity.MacroRealtimePushScanResult;
+import com.dawei.entity.MarketState;
 import com.dawei.scheduler.MorningReportScheduler;
+import com.dawei.service.impl.AStockPushHealthAlertService;
+import com.dawei.service.impl.MacroRealtimePushService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,6 +29,10 @@ class ReportPushControllerTest {
 
     @Mock
     private MorningReportScheduler morningReportScheduler;
+    @Mock
+    private AStockPushHealthAlertService aStockPushHealthAlertService;
+    @Mock
+    private MacroRealtimePushService macroRealtimePushService;
 
     @InjectMocks
     private ReportPushController reportPushController;
@@ -96,7 +106,7 @@ class ReportPushControllerTest {
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("A股盘后复盘推送成功", result.get("message"));
-        assertEquals("当天9:00到15:00（过去6小时）", result.get("dataRange"));
+        assertEquals("当天9:00到当前执行时间", result.get("dataRange"));
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
     }
 
@@ -110,6 +120,53 @@ class ReportPushControllerTest {
         assertFalse((Boolean) result.get("success"));
         assertTrue(((String) result.get("message")).contains("网络超时"));
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股盘后风险速递 - 成功")
+    void testPushAPostCloseRiskDigestSuccess() {
+        Map<String, Object> result = reportPushController.pushAPostCloseRiskDigest();
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A股盘后风险速递推送成功", result.get("message"));
+        assertEquals("当天15:00到当前执行时间", result.get("dataRange"));
+        verify(morningReportScheduler, times(1)).pushAPostCloseRiskDigestManually();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股实时链路健康巡检 - 触发告警")
+    void testPushARealtimeHealthAlertTriggered() {
+        when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(healthCheckResult(true, true));
+
+        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert();
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A股实时链路健康告警已推送", result.get("message"));
+        verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股实时链路健康巡检 - 未触发告警")
+    void testPushARealtimeHealthAlertHealthy() {
+        when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(healthCheckResult(false, false));
+
+        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert();
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A股实时链路健康，未触发健康告警", result.get("message"));
+        verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
+    }
+
+    @Test
+    @DisplayName("测试手动触发宏观快讯实时回扫")
+    void testPushMacroRealtimeAlerts() {
+        when(macroRealtimePushService.scanAndPushRecentEvents()).thenReturn(macroScanResult(2, 1, 1));
+
+        Map<String, Object> result = reportPushController.pushMacroRealtimeAlerts();
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("宏观快讯实时推送已执行", result.get("message"));
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
     }
 
     @Test
@@ -163,12 +220,14 @@ class ReportPushControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> details = (Map<String, Object>) result.get("details");
         assertNotNull(details);
-        assertEquals(4, details.size());
+        assertEquals(6, details.size());
 
         verify(morningReportScheduler, times(1)).pushUSMorningReportManually();
         verify(morningReportScheduler, times(1)).pushAMorningReportManually();
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
         verify(morningReportScheduler, times(1)).pushUSEveningReportManually();
+        verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
     }
 
     @Test
@@ -191,6 +250,8 @@ class ReportPushControllerTest {
         verify(morningReportScheduler, times(1)).pushAMorningReportManually();
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
         verify(morningReportScheduler, times(1)).pushUSEveningReportManually();
+        verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
     }
 
     @Test
@@ -204,12 +265,33 @@ class ReportPushControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> details = (Map<String, Object>) result.get("details");
         assertNotNull(details);
-        assertEquals(4, details.size());
+        assertEquals(6, details.size());
         assertTrue(details.get("usMorning").toString().contains("已关闭"));
         assertTrue(details.get("usEvening").toString().contains("已关闭"));
         verify(morningReportScheduler, never()).pushUSMorningReportManually();
         verify(morningReportScheduler, never()).pushUSEveningReportManually();
         verify(morningReportScheduler, times(1)).pushAMorningReportManually();
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
+        verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
+    }
+
+    private AStockPushHealthCheckResult healthCheckResult(boolean alertTriggered, boolean pushed) {
+        AStockPushHealthCheckResult result = new AStockPushHealthCheckResult();
+        result.setAlertTriggered(alertTriggered);
+        result.setPushed(pushed);
+        result.setAlertSummary("过去120分钟内高分公告10条，但实时已发送仅0条");
+        result.setAlertReason(alertTriggered ? "高分公告持续入库，但实时推送为 0" : null);
+        result.setMarketState(MarketState.DEFENSIVE);
+        return result;
+    }
+
+    private MacroRealtimePushScanResult macroScanResult(int scannedCount, int pushedCount, int skippedCount) {
+        MacroRealtimePushScanResult result = new MacroRealtimePushScanResult();
+        result.setScannedCount(scannedCount);
+        result.setPushedCount(pushedCount);
+        result.setSkippedCount(skippedCount);
+        result.setPushedTitles(List.of("证监会就高频交易监管从严表态"));
+        return result;
     }
 }

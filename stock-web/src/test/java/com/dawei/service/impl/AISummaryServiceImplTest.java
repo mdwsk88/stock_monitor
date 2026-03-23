@@ -1,8 +1,11 @@
 package com.dawei.service.impl;
 
 import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.AReportOpportunityInsight;
 import com.dawei.entity.AReportResonanceCard;
 import com.dawei.entity.AStockRss;
+import com.dawei.entity.MarketSnapshot;
+import com.dawei.entity.MarketState;
 import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,6 +98,9 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.startsWith("# 🌅 A股盘前异动雷达 | 2026-03-15"));
         assertTrue(markdown.contains("口径说明"));
         assertTrue(markdown.contains("最近24小时窗口内的股票聚合分"));
+        assertTrue(promptText.contains("## MarketContext"));
+        assertTrue(promptText.contains("market_state: 进攻态"));
+        assertTrue(promptText.contains("market_interpretation: 盘面进入进攻态"));
         assertTrue(promptText.contains("## MacroThemeCandidates"));
         assertTrue(promptText.contains("## ResonanceCandidates"));
         assertTrue(promptText.contains("## OpportunityCandidates"));
@@ -103,6 +109,9 @@ class AISummaryServiceImplTest {
         assertTrue(promptText.contains("mapped_stock_count: 3"));
         assertTrue(promptText.contains("fusion_score: 136"));
         assertTrue(promptText.contains("macro_theme_name: 算力"));
+        assertTrue(promptText.contains("position_label: 领军核心"));
+        assertTrue(promptText.contains("position_reason: 事件评分进入主线级"));
+        assertTrue(promptText.contains("trade_hint: 可作为主线锚点"));
         assertTrue(promptText.contains("### EventCard 1"));
         assertTrue(promptText.contains("signal_score: 118"));
         assertTrue(promptText.contains("signal_level: 主线级"));
@@ -133,9 +142,12 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.contains("## 机会榜"));
         assertTrue(markdown.contains("## 风险榜"));
         assertTrue(markdown.contains("口径说明"));
+        assertTrue(markdown.contains("当前市场状态：进攻态"));
         assertTrue(markdown.contains("🎯 事件评分"));
         assertTrue(markdown.contains("主题强度"));
         assertTrue(markdown.contains("共振强度"));
+        assertTrue(markdown.contains("🏷️ 身位判定"));
+        assertTrue(markdown.contains("领军核心"));
         assertTrue(markdown.contains("118 分"));
         assertTrue(markdown.contains("2 个事件簇 / 4 条支撑公告"));
         assertTrue(markdown.contains("平安银行:关于中标10亿元算力项目的公告"));
@@ -160,6 +172,8 @@ class AISummaryServiceImplTest {
         assertTrue(markdown.contains("## 风险榜"));
         assertTrue(markdown.contains("口径说明"));
         assertTrue(markdown.contains("今日 09:00-15:00 交易时段内的股票聚合分"));
+        assertTrue(markdown.contains("当前市场状态：进攻态"));
+        assertTrue(markdown.contains("🏷️ 身位判定"));
         assertTrue(markdown.contains("当日热度"));
         assertTrue(markdown.contains("*ST亚太"));
         assertTrue(markdown.contains("平安银行"));
@@ -257,8 +271,31 @@ class AISummaryServiceImplTest {
         AReportFusionContext context = new AReportFusionContext();
         context.setMacroThemes(List.of(macroTheme));
         context.setResonanceCandidates(List.of(resonanceCard));
+        context.setMarketSnapshot(buildMarketSnapshot());
+        context.setOpportunityInsights(List.of(new AReportOpportunityInsight(
+                "000001",
+                "平安银行",
+                "领军核心",
+                "事件评分进入主线级；命中宏观主线共振；支撑公告密集",
+                "可作为主线锚点，优先观察开盘承接、量能和主题扩散",
+                88,
+                true
+        )));
         context.setOpportunityAlerts(List.of(buildOpportunityAlert()));
         context.setRiskAlerts(List.of(buildRiskAlert()));
         return context;
+    }
+
+    private MarketSnapshot buildMarketSnapshot() {
+        MarketSnapshot snapshot = MarketSnapshot.neutral(LocalDateTime.of(2026, 3, 15, 8, 55), "TEST");
+        snapshot.setMarketState(MarketState.RISK_ON);
+        snapshot.setShChangePct(1.36d);
+        snapshot.setSzChangePct(1.92d);
+        snapshot.setCybChangePct(2.44d);
+        snapshot.setUpCount(3620);
+        snapshot.setDownCount(1180);
+        snapshot.setLimitUpCount(83);
+        snapshot.setLimitDownCount(6);
+        return snapshot;
     }
 }

@@ -1,8 +1,11 @@
 package com.dawei.service.impl;
 
 import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.AReportOpportunityInsight;
 import com.dawei.entity.AReportResonanceCard;
 import com.dawei.entity.AStockRss;
+import com.dawei.entity.MarketSnapshot;
+import com.dawei.entity.MarketState;
 import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
@@ -15,8 +18,11 @@ import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -188,7 +194,10 @@ public class AISummaryServiceImpl implements AISummaryService {
         报告日期：{reportDate}
         统计时长：过去24小时
         数据源：东方财富公告源（已完成去噪、事件聚类、规则评分）
-        
+
+        市场状态快照：
+        {marketContext}
+
         宏观主题数据：
         {macroThemeData}
 
@@ -199,6 +208,10 @@ public class AISummaryServiceImpl implements AISummaryService {
         {stockData}
 
         【核心分析要求 - 必须严格执行】
+        0. 先读取市场状态快照：
+           - `防守态`：不要鼓励追高，偏利多标的除非是绝对核心共振，否则只能降级表达。
+           - `进攻态`：优先识别真正能带队的龙头，不要把普通跟风股写成主升核心。
+           - `高潮态`：允许保留强龙头，但必须明确提示后排追高与次日兑现风险。
         1. 先判断有没有实质性事件：
            - 只关注业绩超预期、重大合同、中标、并购重组、产品获批、回购增持、立案调查、减持、诉讼处罚等会改变预期的事件。
            - 如果只是治理、会务、理财、募集资金例行动作、补充披露等常规事务，直接忽略，不要强行写成机会。
@@ -243,9 +256,10 @@ public class AISummaryServiceImpl implements AISummaryService {
           ## 机会榜
           1. 股票名 (代码) | 🇨🇳 A股
           📈 事件判断：<font color="warning">【强烈看多】</font> / <font color="info">【谨慎看多】</font> / <font color="comment">【中性观望】</font> / <font color="warning">【利空预警】</font>
+          🏷️ 身位判定：<font color="warning/info/comment">【领军核心/高弹性跟风/观察名单】</font>
           🎯 事件评分：<font color="颜色">分数 分 (等级，X 个事件簇 / Y 条支撑公告)</font>
           🧠 核心预期差：【业务/财务影响】+【情绪或资金如何交易它】
-          ## 风险榜
+        ## 风险榜
           1. 股票名 (代码) | 🇨🇳 A股
           ⚠️ 事件判断：<font color="warning">【利空预警】</font> / <font color="comment">【中性观望】</font>
           🎯 事件评分：<font color="warning/info">分数 分 (等级，X 个事件簇 / Y 条支撑公告)</font>
@@ -318,7 +332,10 @@ public class AISummaryServiceImpl implements AISummaryService {
         报告日期：{reportDate}
         统计时段：日内（9:00-15:00）
         数据源：东方财富公告源（已完成去噪、事件聚类、规则评分）
-        
+
+        市场状态快照：
+        {marketContext}
+
         宏观主题数据：
         {macroThemeData}
 
@@ -329,6 +346,10 @@ public class AISummaryServiceImpl implements AISummaryService {
         {stockData}
 
         【核心分析要求 - 必须严格执行】
+        0. 先读取市场状态快照：
+           - `防守态`：重点解释风险扩散与防守信号，不要把普通反弹包装成主线。
+           - `进攻态`：重点辨识谁是领涨核心，谁只是跟风扩散。
+           - `高潮态`：必须提示情绪过热、炸板回落和后排掉队风险。
         1. **涨跌逻辑解码**（必须）：
            - 作为盘后复盘专家，结合事件数据解释该股票今日价格波动的核心驱动原因
            - 格式必须严格按照：【核心原因词】+ 具体逻辑解释
@@ -372,6 +393,7 @@ public class AISummaryServiceImpl implements AISummaryService {
           > 🔗 共振强度：<font color="颜色">分数 分 (强共振/高共振/弱共振)</font>
           > 🧠 共振逻辑解码：【公告影响】+【主题放大后的资金交易方式】
           > 1. 股票名 (代码) | 🇨🇳 A股
+          > 🏷️ 身位判定：<font color="warning/info/comment">【领军核心/高弹性跟风/观察名单】</font>
           > 🔥/📈/📉/⚖️ 当日热度：<font color="颜色">等级 (事件评分 X 分，Y 个事件簇 / Z 条支撑公告)</font>
           > 🧠 涨跌逻辑解码：【核心原因词】+ 具体逻辑解释
         - 颜色选择规则：
@@ -623,11 +645,17 @@ public class AISummaryServiceImpl implements AISummaryService {
             return buildNoDataMarkdown(reportDate, "A股");
         }
 
-        String stockData = formatAStockAlertData(reportContext.getOpportunityAlerts(), reportContext.getRiskAlerts());
+        String marketContext = formatMarketContext(reportContext.getMarketSnapshot());
+        String stockData = formatAStockAlertData(
+                reportContext.getOpportunityAlerts(),
+                reportContext.getRiskAlerts(),
+                reportContext.getOpportunityInsights()
+        );
         String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
-        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates());
+        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights());
         String prompt = A_MORNING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
+                .replace("{marketContext}", marketContext)
                 .replace("{macroThemeData}", macroThemeData)
                 .replace("{resonanceData}", resonanceData)
                 .replace("{stockData}", stockData);
@@ -665,11 +693,17 @@ public class AISummaryServiceImpl implements AISummaryService {
             return buildAStockNoDataEveningMarkdown(reportDate);
         }
 
-        String stockData = formatAStockAlertData(reportContext.getOpportunityAlerts(), reportContext.getRiskAlerts());
+        String marketContext = formatMarketContext(reportContext.getMarketSnapshot());
+        String stockData = formatAStockAlertData(
+                reportContext.getOpportunityAlerts(),
+                reportContext.getRiskAlerts(),
+                reportContext.getOpportunityInsights()
+        );
         String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
-        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates());
+        String resonanceData = formatResonanceData(reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights());
         String prompt = A_EVENING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
+                .replace("{marketContext}", marketContext)
                 .replace("{macroThemeData}", macroThemeData)
                 .replace("{resonanceData}", resonanceData)
                 .replace("{stockData}", stockData);
@@ -805,16 +839,20 @@ public class AISummaryServiceImpl implements AISummaryService {
      * 格式化A股异动数据（包含频次和所有相关标题）
      */
     private String formatAStockAlertData(List<StockAlertDTO<AStockRss>> opportunities,
-                                         List<StockAlertDTO<AStockRss>> risks) {
+                                         List<StockAlertDTO<AStockRss>> risks,
+                                         List<AReportOpportunityInsight> opportunityInsights) {
         StringBuilder sb = new StringBuilder();
-        appendAStockEventCards(sb, "## OpportunityCandidates", opportunities);
-        appendAStockEventCards(sb, "## RiskCandidates", risks);
+        Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
+        appendAStockEventCards(sb, "## OpportunityCandidates", opportunities, insightByCode, true);
+        appendAStockEventCards(sb, "## RiskCandidates", risks, insightByCode, false);
         return sb.toString();
     }
 
     private void appendAStockEventCards(StringBuilder sb,
                                         String sectionTitle,
-                                        List<StockAlertDTO<AStockRss>> alerts) {
+                                        List<StockAlertDTO<AStockRss>> alerts,
+                                        Map<String, AReportOpportunityInsight> insightByCode,
+                                        boolean opportunitySection) {
         sb.append(sectionTitle).append("\n");
         if (alerts.isEmpty()) {
             sb.append("- none\n\n");
@@ -834,11 +872,67 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("event_type: ").append(stock.getEventType() != null ? stock.getEventType() : "N/A").append("\n");
             sb.append("color_tag: ").append(dto.getSignalColorTag()).append("\n");
             sb.append("analysis_hint: ").append(stock.getAnalysisHint() != null ? stock.getAnalysisHint() : "N/A").append("\n");
+            if (opportunitySection) {
+                AReportOpportunityInsight insight = insightByCode.get(stock.getStockCode());
+                if (insight != null) {
+                    sb.append("position_label: ").append(insight.getPositionLabel()).append("\n");
+                    sb.append("position_reason: ").append(insight.getPositionReason()).append("\n");
+                    sb.append("trade_hint: ").append(insight.getTradeHint()).append("\n");
+                    sb.append("conviction_score: ").append(insight.getConvictionScore()).append("\n");
+                    sb.append("resonance_supported: ").append(insight.isResonanceSupported()).append("\n");
+                }
+            }
             sb.append("latest_notice_title: ").append(stock.getTitle() != null ? stock.getTitle() : "N/A").append("\n");
             sb.append("related_titles: ").append(stock.getRelatedTitles() != null ? stock.getRelatedTitles() : "N/A").append("\n");
             sb.append("cluster_highlights:\n").append(indentMultiline(stock.getClusterHighlights() != null ? stock.getClusterHighlights() : "N/A", "  - ")).append("\n");
             sb.append("\n");
         }
+    }
+
+    private Map<String, AReportOpportunityInsight> indexInsights(List<AReportOpportunityInsight> opportunityInsights) {
+        if (opportunityInsights == null || opportunityInsights.isEmpty()) {
+            return Map.of();
+        }
+        return opportunityInsights.stream()
+                .filter(Objects::nonNull)
+                .filter(insight -> isNotBlank(insight.getStockCode()))
+                .collect(Collectors.toMap(
+                        AReportOpportunityInsight::getStockCode,
+                        insight -> insight,
+                        (left, right) -> left.getConvictionScore() >= right.getConvictionScore() ? left : right,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private String formatMarketContext(MarketSnapshot snapshot) {
+        StringBuilder sb = new StringBuilder("## MarketContext\n");
+        if (snapshot == null) {
+            sb.append("market_state: 中性\n")
+                    .append("market_interpretation: 暂无盘中市场快照，按照中性环境处理\n\n");
+            return sb.toString();
+        }
+        sb.append("market_state: ")
+                .append(snapshot.getMarketState() != null ? snapshot.getMarketState().getLabel() : MarketState.NEUTRAL.getLabel())
+                .append("\n");
+        sb.append("captured_at: ")
+                .append(snapshot.getCapturedAt() != null ? snapshot.getCapturedAt().format(DATE_FORMATTER) : "N/A")
+                .append("\n");
+        sb.append("index_change: 上证 ")
+                .append(formatPct(snapshot.getShChangePct()))
+                .append(" | 深成指 ")
+                .append(formatPct(snapshot.getSzChangePct()))
+                .append(" | 创业板 ")
+                .append(formatPct(snapshot.getCybChangePct()))
+                .append("\n");
+        sb.append("breadth: 上涨 ").append(Math.max(0, snapshot.getUpCount()))
+                .append(" | 下跌 ").append(Math.max(0, snapshot.getDownCount()))
+                .append(" | 平盘 ").append(Math.max(0, snapshot.getFlatCount()))
+                .append("\n");
+        sb.append("limit_status: 涨停 ").append(Math.max(0, snapshot.getLimitUpCount()))
+                .append(" | 跌停 ").append(Math.max(0, snapshot.getLimitDownCount()))
+                .append("\n");
+        sb.append("market_interpretation: ").append(resolveMarketInterpretation(snapshot)).append("\n\n");
+        return sb.toString();
     }
 
     private String formatMacroThemeData(List<MacroThemeEvent> macroThemes) {
@@ -866,13 +960,15 @@ public class AISummaryServiceImpl implements AISummaryService {
         return sb.toString();
     }
 
-    private String formatResonanceData(List<AReportResonanceCard> resonanceCards) {
+    private String formatResonanceData(List<AReportResonanceCard> resonanceCards,
+                                       List<AReportOpportunityInsight> opportunityInsights) {
         StringBuilder sb = new StringBuilder();
         sb.append("## ResonanceCandidates\n");
         if (resonanceCards == null || resonanceCards.isEmpty()) {
             sb.append("- none\n\n");
             return sb.toString();
         }
+        Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
         for (int i = 0; i < resonanceCards.size(); i++) {
             AReportResonanceCard card = resonanceCards.get(i);
             sb.append("### ResonanceCard ").append(i + 1).append("\n");
@@ -888,6 +984,11 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("macro_theme_name: ").append(card.getMacroThemeName() != null ? card.getMacroThemeName() : "N/A").append("\n");
             sb.append("macro_event_type: ").append(card.getMacroEventType() != null ? card.getMacroEventType() : "N/A").append("\n");
             sb.append("notice_event_type: ").append(card.getNoticeEventType() != null ? card.getNoticeEventType() : "N/A").append("\n");
+            AReportOpportunityInsight insight = insightByCode.get(card.getStockCode());
+            if (insight != null) {
+                sb.append("position_label: ").append(insight.getPositionLabel()).append("\n");
+                sb.append("position_reason: ").append(insight.getPositionReason()).append("\n");
+            }
             sb.append("relation_reason: ").append(card.getRelationReason() != null ? card.getRelationReason() : "N/A").append("\n");
             sb.append("notice_title: ").append(card.getNoticeTitle() != null ? card.getNoticeTitle() : "N/A").append("\n");
             sb.append("macro_title: ").append(card.getMacroTitle() != null ? card.getMacroTitle() : "N/A").append("\n");
@@ -1101,10 +1202,11 @@ public class AISummaryServiceImpl implements AISummaryService {
         StringBuilder sb = new StringBuilder();
         sb.append("# 🌅 A股盘前异动雷达 | ").append(reportDate).append("\n\n");
         sb.append("过去 24 小时内，系统完成了公告去噪、事件聚类、宏观主题聚合与风险分流，以下标的是盘前最值得关注的主线、共振与风险：\n\n");
+        appendMarketSnapshotBanner(sb, reportContext.getMarketSnapshot());
         appendMacroThemeSection(sb, reportContext.getMacroThemes());
-        appendResonanceSection(sb, reportContext.getResonanceCandidates(), true);
-        appendAMorningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), false);
-        appendAMorningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), true);
+        appendResonanceSection(sb, reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights(), true);
+        appendAMorningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights(), false);
+        appendAMorningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), reportContext.getOpportunityInsights(), true);
         sb.append("💡 AI 深度查股：\n");
         sb.append("想看上述股票的具体公告源？或者查询你的自选股？\n");
         sb.append("👉 请在群内直接发送：@A股分析专家 分析 [股票代码]\n\n");
@@ -1116,12 +1218,14 @@ public class AISummaryServiceImpl implements AISummaryService {
                                        String sectionTitle,
                                        String emptyText,
                                        List<StockAlertDTO<AStockRss>> alerts,
+                                       List<AReportOpportunityInsight> opportunityInsights,
                                        boolean riskSection) {
         sb.append("## ").append(sectionTitle).append("\n\n");
         if (alerts.isEmpty()) {
             sb.append("<font color=\"comment\">").append(emptyText).append("</font>\n\n");
             return;
         }
+        Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
         for (int i = 0; i < alerts.size(); i++) {
             StockAlertDTO<AStockRss> dto = alerts.get(i);
             AStockRss stock = dto.getStock();
@@ -1134,6 +1238,9 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("> ").append(riskSection ? "⚠️" : "📈").append(" 事件判断：<font color=\"")
                     .append(dto.getSignalColorTag()).append("\">【")
                     .append(resolveFallbackSignalLabel(dto)).append("】</font>\n");
+            if (!riskSection) {
+                appendPositionLine(sb, insightByCode.get(stockCode));
+            }
             sb.append("> 🎯 事件评分：<font color=\"").append(dto.getSignalColorTag()).append("\">")
                     .append(dto.getSignalScore()).append(" 分 (")
                     .append(dto.getSignalLevel()).append("，")
@@ -1179,12 +1286,14 @@ public class AISummaryServiceImpl implements AISummaryService {
 
     private void appendResonanceSection(StringBuilder sb,
                                         List<AReportResonanceCard> resonanceCards,
+                                        List<AReportOpportunityInsight> opportunityInsights,
                                         boolean morning) {
         sb.append("## 共振标的\n\n");
         if (resonanceCards == null || resonanceCards.isEmpty()) {
             sb.append("<font color=\"comment\">暂无公告与主题共振标的</font>\n\n");
             return;
         }
+        Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
         for (int i = 0; i < Math.min(A_STOCK_SECTION_LIMIT, resonanceCards.size()); i++) {
             AReportResonanceCard card = resonanceCards.get(i);
             String stockCode = defaultText(card.getStockCode(), "未知");
@@ -1193,6 +1302,7 @@ public class AISummaryServiceImpl implements AISummaryService {
                     .append(defaultText(card.getMacroThemeName(), "宏观主题")).append("\n");
             sb.append("> 🔗 共振强度：<font color=\"").append(card.getColorTag()).append("\">")
                     .append(card.getFusionScore()).append(" 分 (").append(card.getFusionLevel()).append(")</font>\n");
+            appendPositionLine(sb, insightByCode.get(stockCode));
             sb.append("> 🧠 ").append(morning ? "共振逻辑：" : "共振逻辑解码：")
                     .append(defaultText(card.getNoticeTitle(), "暂无公告标题"));
             if (isNotBlank(card.getMacroTitle())) {
@@ -1281,10 +1391,11 @@ public class AISummaryServiceImpl implements AISummaryService {
         StringBuilder sb = new StringBuilder();
         sb.append("# 🌆 A股盘后情绪解码 | ").append(reportDate).append("\n\n");
         sb.append("今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线：\n\n");
+        appendMarketSnapshotBanner(sb, reportContext.getMarketSnapshot());
         appendMacroThemeSection(sb, reportContext.getMacroThemes());
-        appendResonanceSection(sb, reportContext.getResonanceCandidates(), false);
-        appendAEveningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts());
-        appendAEveningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts());
+        appendResonanceSection(sb, reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights(), false);
+        appendAEveningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights());
+        appendAEveningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), reportContext.getOpportunityInsights());
 
         sb.append("💡 持仓深度体检：\n");
         sb.append("今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n");
@@ -1297,12 +1408,14 @@ public class AISummaryServiceImpl implements AISummaryService {
     private void appendAEveningSection(StringBuilder sb,
                                        String sectionTitle,
                                        String emptyText,
-                                       List<StockAlertDTO<AStockRss>> alerts) {
+                                       List<StockAlertDTO<AStockRss>> alerts,
+                                       List<AReportOpportunityInsight> opportunityInsights) {
         sb.append("## ").append(sectionTitle).append("\n\n");
         if (alerts.isEmpty()) {
             sb.append("<font color=\"comment\">").append(emptyText).append("</font>\n\n");
             return;
         }
+        Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
 
         for (int i = 0; i < alerts.size(); i++) {
             StockAlertDTO<AStockRss> dto = alerts.get(i);
@@ -1325,6 +1438,7 @@ public class AISummaryServiceImpl implements AISummaryService {
             }
 
             sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | 🇨🇳 A股\n");
+            appendPositionLine(sb, insightByCode.get(stockCode));
             sb.append("> ").append(heatIcon).append(" 当日热度：<font color=\"").append(dto.getSignalColorTag()).append("\">")
                     .append(heatLevel).append(" (事件评分 ").append(dto.getSignalScore()).append(" 分，")
                     .append(dto.getEventCount()).append(" 个事件簇 / ").append(dto.getFrequency()).append(" 条支撑公告)</font>\n");
@@ -1373,6 +1487,52 @@ public class AISummaryServiceImpl implements AISummaryService {
             return "利多";
         }
         return "中性";
+    }
+
+    private void appendPositionLine(StringBuilder sb, AReportOpportunityInsight insight) {
+        if (sb == null || insight == null) {
+            return;
+        }
+        sb.append("> 🏷️ 身位判定：<font color=\"").append(insight.getColorTag()).append("\">【")
+                .append(defaultText(insight.getPositionLabel(), "观察名单")).append("】</font>");
+        if (isNotBlank(insight.getPositionReason())) {
+            sb.append(" ").append(truncate(insight.getPositionReason(), 48));
+        }
+        sb.append("\n");
+    }
+
+    private void appendMarketSnapshotBanner(StringBuilder sb, MarketSnapshot snapshot) {
+        if (sb == null || snapshot == null) {
+            return;
+        }
+        sb.append("<font color=\"comment\">当前市场状态：")
+                .append(snapshot.getMarketState() != null ? snapshot.getMarketState().getLabel() : MarketState.NEUTRAL.getLabel())
+                .append(" | 上证 ").append(formatPct(snapshot.getShChangePct()))
+                .append(" / 深成指 ").append(formatPct(snapshot.getSzChangePct()))
+                .append(" / 创业板 ").append(formatPct(snapshot.getCybChangePct()))
+                .append(" | 上涨 ").append(Math.max(0, snapshot.getUpCount()))
+                .append(" / 下跌 ").append(Math.max(0, snapshot.getDownCount()))
+                .append(" | 涨停 ").append(Math.max(0, snapshot.getLimitUpCount()))
+                .append(" / 跌停 ").append(Math.max(0, snapshot.getLimitDownCount()))
+                .append(" | ").append(resolveMarketInterpretation(snapshot))
+                .append("</font>\n\n");
+    }
+
+    private String resolveMarketInterpretation(MarketSnapshot snapshot) {
+        if (snapshot == null) {
+            return "暂无市场快照，按中性环境处理";
+        }
+        MarketState marketState = snapshot.getMarketState() != null ? snapshot.getMarketState() : MarketState.NEUTRAL;
+        return switch (marketState) {
+            case DEFENSIVE -> "盘面偏防守，优先识别风险扩散与逆势硬逻辑";
+            case RISK_ON -> "盘面进入进攻态，优先辨识带队龙头与主线扩散";
+            case OVERHEAT -> "盘面情绪过热，龙头仍强但后排追高容错下降";
+            default -> "盘面仍在中性区间，宁缺毋滥地筛选高确定性催化";
+        };
+    }
+
+    private String formatPct(double value) {
+        return String.format(Locale.ROOT, "%+.2f%%", value);
     }
 
     private int safeInt(Integer value) {

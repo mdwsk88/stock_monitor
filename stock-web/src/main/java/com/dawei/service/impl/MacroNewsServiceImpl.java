@@ -86,6 +86,7 @@ public class MacroNewsServiceImpl implements MacroNewsService {
     private final MacroNewsSignalService macroNewsSignalService;
     private final MacroThemeRelationService macroThemeRelationService;
     private final ThemeAutoPoolService themeAutoPoolService;
+    private final MacroRealtimePushService macroRealtimePushService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MacroNewsServiceImpl(RestTemplate restTemplate,
@@ -94,7 +95,8 @@ public class MacroNewsServiceImpl implements MacroNewsService {
                                 MacroThemeStockRelMapper macroThemeStockRelMapper,
                                 MacroThemeRelationService macroThemeRelationService,
                                 MacroNewsSignalService macroNewsSignalService,
-                                ThemeAutoPoolService themeAutoPoolService) {
+                                ThemeAutoPoolService themeAutoPoolService,
+                                MacroRealtimePushService macroRealtimePushService) {
         this.restTemplate = restTemplate;
         this.macroNewsRawMapper = macroNewsRawMapper;
         this.macroThemeEventMapper = macroThemeEventMapper;
@@ -102,6 +104,7 @@ public class MacroNewsServiceImpl implements MacroNewsService {
         this.macroThemeRelationService = macroThemeRelationService;
         this.macroNewsSignalService = macroNewsSignalService;
         this.themeAutoPoolService = themeAutoPoolService;
+        this.macroRealtimePushService = macroRealtimePushService;
     }
 
     @Override
@@ -154,6 +157,9 @@ public class MacroNewsServiceImpl implements MacroNewsService {
                         explicitReferences = macroThemeRelationService.loadExplicitReferencePool(watchlistByTheme);
                     }
                 }
+            }
+            if (inserted > 0) {
+                macroRealtimePushService.handlePersistedEvent(persistedEvent);
             }
         }
 

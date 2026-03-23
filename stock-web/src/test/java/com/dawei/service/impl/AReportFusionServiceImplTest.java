@@ -1,10 +1,13 @@
 package com.dawei.service.impl;
 
 import com.dawei.entity.AReportFusionContext;
+import com.dawei.entity.MarketSnapshot;
+import com.dawei.entity.MarketState;
 import com.dawei.entity.AStockRss;
 import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.service.MacroNewsService;
+import com.dawei.service.MarketStateService;
 import com.dawei.service.StockRankService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,8 @@ class AReportFusionServiceImplTest {
     private StockRankService stockRankService;
     @Mock
     private MacroNewsService macroNewsService;
+    @Mock
+    private MarketStateService marketStateService;
 
     private AReportFusionServiceImpl fusionService;
 
@@ -34,8 +39,11 @@ class AReportFusionServiceImplTest {
         fusionService = new AReportFusionServiceImpl(
                 stockRankService,
                 macroNewsService,
-                new AStockReportClassifier()
+                marketStateService,
+                new AStockReportClassifier(),
+                new AReportOpportunityInsightService()
         );
+        when(marketStateService.getLatestSnapshot()).thenReturn(marketSnapshot());
     }
 
     @Test
@@ -56,6 +64,9 @@ class AReportFusionServiceImplTest {
         assertEquals("000001", context.getResonanceCandidates().get(0).getStockCode());
         assertEquals("算力", context.getResonanceCandidates().get(0).getMacroThemeName());
         assertTrue(context.getResonanceCandidates().get(0).getFusionScore() >= 130);
+        assertEquals(MarketState.RISK_ON, context.getMarketSnapshot().getMarketState());
+        assertEquals(1, context.getOpportunityInsights().size());
+        assertEquals("领军核心", context.getOpportunityInsights().get(0).getPositionLabel());
     }
 
     @Test
@@ -219,5 +230,18 @@ class AReportFusionServiceImplTest {
         theme.setSummary(title);
         theme.setPubDate(LocalDateTime.of(2026, 3, 16, 8, 20));
         return theme;
+    }
+
+    private MarketSnapshot marketSnapshot() {
+        MarketSnapshot snapshot = MarketSnapshot.neutral(LocalDateTime.of(2026, 3, 16, 8, 55), "TEST");
+        snapshot.setMarketState(MarketState.RISK_ON);
+        snapshot.setShChangePct(1.3d);
+        snapshot.setSzChangePct(1.9d);
+        snapshot.setCybChangePct(2.4d);
+        snapshot.setUpCount(3600);
+        snapshot.setDownCount(1200);
+        snapshot.setLimitUpCount(78);
+        snapshot.setLimitDownCount(6);
+        return snapshot;
     }
 }

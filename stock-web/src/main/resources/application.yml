@@ -77,12 +77,74 @@ stock:
     a-realtime-opportunity-threshold: 85
     # A股盘中风险预警线：比机会流更苛刻，避免日常利空噪音频繁骚扰
     a-realtime-risk-threshold: 88
+    # 防守态下的利空阈值：系统性风险日优先吹哨，不能等到极高分才报警
+    a-realtime-risk-threshold-defensive: 70
     # A股核弹级预警线：用于标记极少数需要强提醒的重大事件
     a-realtime-critical-threshold: 92
+    # 进攻态下的利多阈值：市场转强后适度放宽，避免错过主线起爆
+    a-realtime-opportunity-threshold-risk-on: 78
+    # 高潮态下的利多阈值：略低于常态，但仍需保留防追高的克制
+    a-realtime-opportunity-threshold-overheat: 80
     # A股实时预警冷却时间：同一事件簇在窗口内只允许推一次
     a-realtime-push-cooldown-minutes: 120
     # A股实时预警宏观上下文回看窗口：只关联最近一段时间仍在发酵的主题
     a-realtime-context-hours: 24
+    # 市场状态快照刷新间隔：缓存过期后会自动重新抓取指数与市场宽度
+    market-snapshot-refresh-minutes: 5
+    # 市场快照抓取重试次数：东方财富接口偶发断流时，做轻量重试兜底
+    market-snapshot-retry-attempts: 3
+    # 市场快照抓取退避：单次重试之间的等待时间，避免瞬时抖动放大
+    market-snapshot-retry-backoff-millis: 150
+    # 自动刷新失败退避：最近失败过时，短时间内不对每次业务读取都重新打上游
+    market-snapshot-failure-cooldown-seconds: 45
+    # 快照失联判定：连续失败达到该次数后，在看板上直接标成“失联”
+    market-snapshot-disconnect-failure-threshold: 3
+    # 东方财富市场宽度抓取条数：覆盖全部A股上市公司，计算上涨/下跌/近似涨跌停家数
+    market-breadth-fetch-limit: 6000
+    # 腾讯样本宽度代理池大小：东方财富宽度口失效时，使用样本股估算市场宽度
+    market-breadth-sample-size: 800
+    # 样本池回看天数：从近一段时间出现过公告的A股里构建代理宽度样本
+    market-breadth-sample-lookback-days: 180
+    # 腾讯批量行情单次请求股票数：控制 URL 长度和单次响应体大小
+    market-quote-batch-size: 60
+    # 样本宽度健康告警阈值：样本代理数量过低时，提示市场宽度判定置信度下降
+    market-breadth-sample-warn-threshold: 200
+    # 防守态触发线：任一核心指数跌超该阈值，系统偏向风控
+    market-defensive-index-drop-threshold: -1.5
+    # 进攻态触发线：任一核心指数涨超该阈值，系统开始放宽进攻门槛
+    market-risk-on-index-rise-threshold: 1.2
+    # 高潮态触发线：任一核心指数涨超该阈值且市场宽度同步极强
+    market-overheat-index-rise-threshold: 2.4
+    # 防守态市场宽度线：上涨家数占比低于该值时，视作普跌环境
+    market-defensive-breadth-threshold: 0.35
+    # 进攻态市场宽度线：上涨家数占比高于该值时，确认做多环境扩散
+    market-risk-on-breadth-threshold: 0.60
+    # 高潮态市场宽度线：上涨家数占比高于该值时，提示情绪过热
+    market-overheat-breadth-threshold: 0.72
+    # 防守态近似跌停家数线
+    market-defensive-limit-down-threshold: 80
+    # 高潮态近似涨停家数线
+    market-overheat-limit-up-threshold: 80
+    # 市场脉冲推送冷却时间：避免同一状态在短时间内反复打扰
+    market-pulse-cooldown-minutes: 20
+    # 实时链路健康巡检窗口：过去这段时间内“有事件但没出声”或“状态机已退化”都会被识别为健康风险
+    realtime-health-window-minutes: 120
+    # 高分公告健康阈值：超过该数量且 0 条已发送时触发健康告警
+    realtime-health-high-signal-count-threshold: 8
+    # 硬风险公告健康阈值：利空高危公告积压但没有实时风险推送时优先报警
+    realtime-health-hard-risk-count-threshold: 2
+    # 决策日志健康阈值：窗口内决策足够多但全部被吞掉时，判定为异常静默
+    realtime-health-decision-count-threshold: 8
+    # 决策跳过占比阈值：达到该比例且 0 条发送时，补发健康告警
+    realtime-health-skipped-ratio-threshold: 0.90
+    # 发送失败告警阈值：连续失败达到该数量时触发链路异常提醒
+    realtime-health-failure-count-threshold: 2
+    # 宏观风险健康阈值：高分宏观利空积压却无实时推送时，触发补报警
+    realtime-health-macro-risk-count-threshold: 2
+    # 宏观机会健康阈值：进攻态下利多宏观快讯密集却无推送时，触发补报警
+    realtime-health-macro-opportunity-count-threshold: 3
+    # 健康巡检冷却时间：避免同一个健康问题在短时间内反复刷屏
+    realtime-health-cooldown-minutes: 30
     # A股晨报/晚报最低事件分：低于该分数的公告即使入库也不会进入榜单
     a-ranking-signal-threshold: 60
     # A股每次抓取最多回扫页数，避免晚间集中披露时只扫到第一页
@@ -95,6 +157,20 @@ stock:
     macro-fetch-limit-per-source: 20
     # 宏观主题聚类窗口，避免同一政策/数据在多源下反复上榜
     macro-cluster-window-minutes: 120
+    # 宏观实时风险阈值：盘中系统性利空以更低门槛吹哨
+    macro-realtime-risk-threshold: 82
+    # 防守态宏观风险阈值：市场脆弱时进一步放宽风险吹哨条件
+    macro-realtime-risk-threshold-defensive: 78
+    # 宏观实时机会阈值：只放行高置信度政策/流动性/产业主线利多
+    macro-realtime-opportunity-threshold: 92
+    # 进攻态宏观机会阈值：主线扩散时适度放宽，防止错过大级别催化
+    macro-realtime-opportunity-threshold-risk-on: 86
+    # 高潮态宏观机会阈值：保留机会识别，但防止情绪高潮里泛化乱推
+    macro-realtime-opportunity-threshold-overheat: 90
+    # 宏观实时推送冷却时间：同一主题簇只推一次，避免快讯重复刷屏
+    macro-realtime-push-cooldown-minutes: 90
+    # 宏观实时回扫窗口：定时补扫最近事件，兜住抓取时点丢失
+    macro-realtime-scan-window-minutes: 60
     # 黑名单关键词列表 - 用于过滤行政流水账类噪音
     # 已内置以下类别：会议类、人事变动类、资金类（日常运营）、自查/合规类、关联交易/担保类、期权激励类、质押类、其他常规行政公告
     # 如需自定义，可在此覆盖或添加

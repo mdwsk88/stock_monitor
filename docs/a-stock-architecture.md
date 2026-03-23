@@ -15,6 +15,7 @@ flowchart TB
         B2["StockScheduler<br/>定时调度"]
         B3["RssService<br/>A 股公告抓取入库"]
         B4["MacroNewsService<br/>宏观快讯抓取入库"]
+        B5["MarketPulseScheduler / MacroRealtimePushScheduler / AStockPushHealthScheduler<br/>市场状态 / 宏观回扫 / 静默巡检"]
     end
 
     subgraph RULE["事件理解层 | 规则引擎"]
@@ -28,6 +29,7 @@ flowchart TB
         D2["ThemeAutoPoolService<br/>自动候选池累积命中"]
         D3["AReportFusionService<br/>宏观主线 + 公告事件 + 共振标的融合"]
         D4["AStockRealtimeContextService<br/>盘中实时共振上下文"]
+        D5["MarketStateService<br/>4 态市场状态机 / 指数与宽度快照"]
     end
 
     subgraph DB["MySQL 数据层"]
@@ -37,6 +39,7 @@ flowchart TB
         E4[("a_macro_theme_stock_rel")]
         E5[("theme_auto_pool_candidate")]
         E6[("a_stock_push_log")]
+        E7[("a_stock_push_decision_log")]
     end
 
     subgraph AI["AI 生成层"]
@@ -48,6 +51,8 @@ flowchart TB
     subgraph OUT["输出层"]
         G1["MorningReportScheduler<br/>A 股盘前早报 / 盘后复盘"]
         G2["AStockRealtimePushService<br/>盘中实时预警"]
+        G5["MacroRealtimePushService<br/>宏观快讯实时预警"]
+        G6["AStockPushHealthAlertService<br/>实时链路静默告警"]
         G3["WeComApi / DingTalkApi<br/>群消息推送"]
         G4["ReportPushController<br/>手动触发接口"]
     end
@@ -74,6 +79,9 @@ flowchart TB
     B1 --> B4
     B2 --> B3
     B2 --> B4
+    B5 --> D5
+    B5 --> G5
+    B5 --> G6
 
     B3 --> C1
     B4 --> C2
@@ -93,23 +101,40 @@ flowchart TB
     E3 --> D3
     E4 --> D3
     E5 --> D3
+    D5 --> D3
 
     C1 --> D4
     E3 --> D4
     E4 --> D4
     E5 --> D4
+    D5 --> G2
+    D5 --> G5
+    E3 --> G5
+    E4 --> G5
+    E1 --> G6
+    E3 --> G6
+    E6 --> G6
+    E7 --> G6
 
     D3 --> F1
     C3 --> F1
+    D5 --> F1
     F1 --> F2
     F2 --> F3
 
     F3 --> G1
     D4 --> G2
     C1 --> G2
+    B4 --> G5
     G1 --> G3
     G2 --> G3
+    G5 --> G3
+    G6 --> G3
+    G2 --> E7
     G4 --> G1
+    G4 --> G5
+    G4 --> G6
+    G5 --> E6
 
     E1 --> H3
     E3 --> H3
@@ -134,7 +159,10 @@ flowchart TB
 - `stock-web` 是主业务服务，负责抓取、规则理解、榜单计算、盘前盘后报告和盘中推送。
 - `AStockSignalService` 是 A 股事件引擎核心，先去噪，再做事件类型、方向和评分判断，并生成事件聚类键。
 - `MacroNewsSignalService` 负责把宏观快讯转成“可交易主题”，为后续主线分析和共振识别提供输入。
+- `MarketStateService` 把指数涨跌幅、涨跌家数和涨跌停结构统一抽象成 `DEFENSIVE / NEUTRAL / RISK_ON / OVERHEAT` 四态，作为全局上下文输入到实时链路和报告链路。
 - `AReportFusionService` 把个股公告、宏观主题、主题映射和共振标的融合成一份高价值上下文，再交给 LLM 生成盘前早报或盘后复盘。
+- `MacroRealtimePushService` 负责把高置信度的政策、监管、流动性和外部风险快讯实时推送出去，补齐“系统性事件只入库不发声”的缺口。
+- `AStockPushHealthAlertService` 基于 `a_stock_push_log` 和 `a_stock_push_decision_log` 做健康巡检，在“有高分事件但 0 推送”时主动报警。
 - `AISummaryService` 不是直接把原始公告扔给模型，而是先喂给模型结构化后的上下文，降低噪音和幻觉。
 - `a-stock-mcp` 把研究能力封装成 MCP 工具，支持个股解析、事件卡、机会榜、风险榜、主线榜和共振榜，便于 Agent 调用。
 
@@ -142,4 +170,4 @@ flowchart TB
 
 这个项目的技术架构本质上是一条“金融事件理解流水线”：
 
-`数据抓取 -> 规则去噪与评分 -> 事件聚类 -> 主题映射 -> 共振融合 -> LLM 生成 -> 群推送 / MCP 问答输出`
+`数据抓取 -> 规则去噪与评分 -> 市场状态判定 -> 事件聚类 -> 主题映射 -> 共振融合 -> 实时推送 / LLM 生成 -> 群推送 / MCP 问答输出`

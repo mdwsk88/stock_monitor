@@ -41,9 +41,24 @@ public class StockFilterConfig {
     private int aRealtimeRiskThreshold = 88;
 
     /**
+     * 防守态下的A股盘中风险预警最低信号分
+     */
+    private int aRealtimeRiskThresholdDefensive = 70;
+
+    /**
      * A股盘中核弹级预警最低信号分
      */
     private int aRealtimeCriticalThreshold = 92;
+
+    /**
+     * 进攻态下的A股盘中机会预警最低信号分
+     */
+    private int aRealtimeOpportunityThresholdRiskOn = 78;
+
+    /**
+     * 高潮态下的A股盘中机会预警最低信号分
+     */
+    private int aRealtimeOpportunityThresholdOverheat = 80;
 
     /**
      * A股实时预警去重冷却时间（分钟）
@@ -54,6 +69,146 @@ public class StockFilterConfig {
      * A股实时预警宏观上下文回看窗口（小时）
      */
     private int aRealtimeContextHours = 24;
+
+    /**
+     * 市场状态快照刷新间隔（分钟）
+     */
+    private int marketSnapshotRefreshMinutes = 5;
+
+    /**
+     * 市场快照抓取重试次数
+     */
+    private int marketSnapshotRetryAttempts = 3;
+
+    /**
+     * 市场快照抓取重试退避（毫秒）
+     */
+    private long marketSnapshotRetryBackoffMillis = 150L;
+
+    /**
+     * 自动刷新遇到抓取失败后的退避时长（秒）
+     */
+    private int marketSnapshotFailureCooldownSeconds = 45;
+
+    /**
+     * 快照判定为失联前允许的连续失败次数
+     */
+    private int marketSnapshotDisconnectFailureThreshold = 3;
+
+    /**
+     * 东方财富市场宽度抓取上限
+     */
+    private int marketBreadthFetchLimit = 6000;
+
+    /**
+     * 市场宽度代理样本池大小
+     */
+    private int marketBreadthSampleSize = 800;
+
+    /**
+     * 市场宽度代理样本池回看天数
+     */
+    private int marketBreadthSampleLookbackDays = 180;
+
+    /**
+     * 腾讯批量行情单次请求股票数
+     */
+    private int marketQuoteBatchSize = 60;
+
+    /**
+     * 样本宽度健康告警阈值：低于该样本数时，认为宽度代理置信度不足
+     */
+    private int marketBreadthSampleWarnThreshold = 200;
+
+    /**
+     * 防守态阈值：最弱核心指数跌幅
+     */
+    private double marketDefensiveIndexDropThreshold = -1.5d;
+
+    /**
+     * 进攻态阈值：最强核心指数涨幅
+     */
+    private double marketRiskOnIndexRiseThreshold = 1.2d;
+
+    /**
+     * 高潮态阈值：最强核心指数涨幅
+     */
+    private double marketOverheatIndexRiseThreshold = 2.4d;
+
+    /**
+     * 防守态阈值：上涨家数占比
+     */
+    private double marketDefensiveBreadthThreshold = 0.35d;
+
+    /**
+     * 进攻态阈值：上涨家数占比
+     */
+    private double marketRiskOnBreadthThreshold = 0.60d;
+
+    /**
+     * 高潮态阈值：上涨家数占比
+     */
+    private double marketOverheatBreadthThreshold = 0.72d;
+
+    /**
+     * 防守态阈值：近似跌停家数
+     */
+    private int marketDefensiveLimitDownThreshold = 80;
+
+    /**
+     * 高潮态阈值：近似涨停家数
+     */
+    private int marketOverheatLimitUpThreshold = 80;
+
+    /**
+     * 市场脉冲去重冷却时间（分钟）
+     */
+    private int marketPulseCooldownMinutes = 20;
+
+    /**
+     * A股实时链路健康巡检窗口（分钟）
+     */
+    private int realtimeHealthWindowMinutes = 120;
+
+    /**
+     * 触发健康告警的高分公告数量阈值
+     */
+    private int realtimeHealthHighSignalCountThreshold = 8;
+
+    /**
+     * 触发健康告警的硬风险公告数量阈值
+     */
+    private int realtimeHealthHardRiskCountThreshold = 2;
+
+    /**
+     * 触发健康告警的决策日志数量阈值
+     */
+    private int realtimeHealthDecisionCountThreshold = 8;
+
+    /**
+     * 健康告警的跳过占比阈值
+     */
+    private double realtimeHealthSkippedRatioThreshold = 0.9d;
+
+    /**
+     * 健康告警的发送失败阈值
+     */
+    private int realtimeHealthFailureCountThreshold = 2;
+
+    /**
+     * 宏观风险健康告警阈值
+     */
+    private int realtimeHealthMacroRiskCountThreshold = 2;
+
+    /**
+     * 宏观机会健康告警阈值
+     */
+    private int realtimeHealthMacroOpportunityCountThreshold = 3;
+
+    /**
+     * 实时链路健康告警冷却时间（分钟）
+     */
+    private int realtimeHealthCooldownMinutes = 30;
 
     /**
      * A股榜单入围最低信号分
@@ -84,6 +239,41 @@ public class StockFilterConfig {
      * 宏观主题聚类窗口（分钟）
      */
     private int macroClusterWindowMinutes = 120;
+
+    /**
+     * 宏观实时风险推送阈值
+     */
+    private int macroRealtimeRiskThreshold = 82;
+
+    /**
+     * 防守态下的宏观实时风险推送阈值
+     */
+    private int macroRealtimeRiskThresholdDefensive = 78;
+
+    /**
+     * 宏观实时机会推送阈值
+     */
+    private int macroRealtimeOpportunityThreshold = 92;
+
+    /**
+     * 进攻态下的宏观实时机会推送阈值
+     */
+    private int macroRealtimeOpportunityThresholdRiskOn = 86;
+
+    /**
+     * 高潮态下的宏观实时机会推送阈值
+     */
+    private int macroRealtimeOpportunityThresholdOverheat = 90;
+
+    /**
+     * 宏观实时推送冷却时间（分钟）
+     */
+    private int macroRealtimePushCooldownMinutes = 90;
+
+    /**
+     * 宏观实时回扫窗口（分钟）
+     */
+    private int macroRealtimeScanWindowMinutes = 60;
 
     /**
      * 黑名单关键词列表 - 用于过滤"行政流水账"类噪音公告
