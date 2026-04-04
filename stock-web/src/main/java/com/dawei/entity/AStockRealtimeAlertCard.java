@@ -38,10 +38,10 @@ public class AStockRealtimeAlertCard {
     }
 
     public String getPositionColorTag() {
-        if ("领军核心".equals(positionLabel)) {
+        if ("领军核心".equals(positionLabel) || "Leading Core".equals(positionLabel)) {
             return "warning";
         }
-        if ("高弹性跟风".equals(positionLabel)) {
+        if ("高弹性跟风".equals(positionLabel) || "High-Beta Follower".equals(positionLabel)) {
             return "info";
         }
         return "comment";

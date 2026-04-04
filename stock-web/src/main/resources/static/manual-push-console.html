@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手动推送测试台</title>
+    <style>
+        :root {
+            --bg: #eee4d6;
+            --panel: rgba(255, 251, 246, 0.86);
+            --panel-strong: rgba(255, 254, 250, 0.94);
+            --panel-dark: rgba(29, 24, 21, 0.92);
+            --ink: #1c1714;
+            --muted: #71665f;
+            --line: rgba(28, 23, 20, 0.1);
+            --accent: #076d61;
+            --accent-soft: rgba(7, 109, 97, 0.12);
+            --alert: #c45431;
+            --alert-soft: rgba(196, 84, 49, 0.12);
+            --good: #166534;
+            --good-soft: rgba(22, 101, 52, 0.12);
+            --danger: #b42318;
+            --danger-soft: rgba(180, 35, 24, 0.12);
+            --shadow-lg: 0 28px 72px rgba(38, 28, 21, 0.12);
+            --shadow-md: 0 18px 36px rgba(38, 28, 21, 0.08);
+            --radius-xl: 30px;
+            --radius-lg: 22px;
+            --radius-md: 18px;
+            --font-display: "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+            --font-sans: "IBM Plex Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            --font-mono: "JetBrains Mono", "SFMono-Regular", "Menlo", monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            font-family: var(--font-sans);
+            background:
+                radial-gradient(circle at top left, rgba(7, 109, 97, 0.12), transparent 26%),
+                radial-gradient(circle at top right, rgba(196, 84, 49, 0.12), transparent 24%),
+                linear-gradient(180deg, #f3eadf 0%, #e8dbc9 100%);
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(28, 23, 20, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(28, 23, 20, 0.03) 1px, transparent 1px);
+            background-size: 24px 24px;
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 88%);
+        }
+
+        a {
+            color: inherit;
+        }
+
+        .shell {
+            width: min(1460px, calc(100vw - 28px));
+            margin: 0 auto;
+            padding: 18px 0 34px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid rgba(28, 23, 20, 0.08);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            backdrop-filter: blur(16px);
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.55fr) minmax(290px, 360px);
+            gap: 14px;
+            align-items: start;
+            padding: 16px;
+            background:
+                linear-gradient(145deg, rgba(255, 252, 248, 0.92), rgba(246, 235, 220, 0.88)),
+                linear-gradient(90deg, rgba(7, 109, 97, 0.08), transparent 40%, rgba(196, 84, 49, 0.08));
+        }
+
+        .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        h1 {
+            margin: 0;
+            font-family: var(--font-display);
+            font-size: clamp(34px, 4vw, 62px);
+            line-height: 0.94;
+            letter-spacing: -0.045em;
+            max-width: 18ch;
+            text-wrap: balance;
+        }
+
+        .subtitle {
+            margin: 8px 0 0;
+            max-width: 40rem;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .hero-copy {
+            min-width: 0;
+        }
+
+        .hero-inline-note {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(29, 24, 21, 0.9), rgba(45, 36, 31, 0.92));
+            color: #f8f1e9;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: var(--shadow-md);
+            max-width: 44rem;
+        }
+
+        .hero-inline-note strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(248, 241, 233, 0.72);
+        }
+
+        .hero-inline-note span {
+            font-size: 13px;
+            line-height: 1.56;
+            color: rgba(248, 241, 233, 0.92);
+        }
+
+        .control-card {
+            padding: 14px;
+            border-radius: 24px;
+            background:
+                linear-gradient(160deg, rgba(29, 24, 21, 0.94), rgba(44, 36, 31, 0.94)),
+                linear-gradient(180deg, rgba(7, 109, 97, 0.14), transparent 35%);
+            color: #f8f1e9;
+            box-shadow: 0 20px 42px rgba(25, 20, 18, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: grid;
+            gap: 12px;
+        }
+
+        .control-top,
+        .field-row,
+        .lang-switch,
+        .history-rail,
+        .action-grid {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .control-kicker {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: rgba(248, 241, 233, 0.6);
+        }
+
+        .control-title {
+            margin: 4px 0 0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .control-note {
+            color: rgba(248, 241, 233, 0.72);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            padding: 8px 11px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .pill.neutral {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(248, 241, 233, 0.9);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .pill.good {
+            background: var(--good-soft);
+            color: var(--good);
+            border-color: rgba(22, 101, 52, 0.16);
+        }
+
+        .pill.running {
+            background: rgba(7, 109, 97, 0.18);
+            color: #8ef0de;
+            border-color: rgba(142, 240, 222, 0.12);
+        }
+
+        .pill.danger {
+            background: rgba(180, 35, 24, 0.18);
+            color: #ffb7ae;
+            border-color: rgba(255, 183, 174, 0.12);
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        .field label {
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(248, 241, 233, 0.6);
+        }
+
+        input[type="text"] {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 11px 14px;
+            font: inherit;
+            color: #fff8f1;
+            outline: none;
+        }
+
+        input[type="text"]::placeholder {
+            color: rgba(248, 241, 233, 0.44);
+        }
+
+        input[type="text"]:focus {
+            border-color: rgba(142, 240, 222, 0.32);
+            box-shadow: 0 0 0 4px rgba(7, 109, 97, 0.18);
+        }
+
+        button,
+        .button-link {
+            appearance: none;
+            border: 0;
+            cursor: pointer;
+            text-decoration: none;
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover:not(:disabled),
+        .button-link:hover {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.64;
+            transform: none;
+        }
+
+        button.primary {
+            background: var(--ink);
+            color: #fff9f2;
+            box-shadow: 0 14px 26px rgba(28, 23, 20, 0.16);
+        }
+
+        button.secondary,
+        .button-link.secondary {
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--ink);
+            border: 1px solid rgba(28, 23, 20, 0.08);
+        }
+
+        .control-card button.secondary,
+        .control-card .button-link.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff8f1;
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        button.warn {
+            background: rgba(196, 84, 49, 0.18);
+            color: #ffd1c4;
+            border: 1px solid rgba(255, 209, 196, 0.1);
+        }
+
+        .lang-switch {
+            padding: 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .lang-toggle {
+            min-width: 88px;
+        }
+
+        .lang-toggle.active {
+            background: #fff8f1;
+            color: var(--ink);
+            box-shadow: 0 10px 22px rgba(255, 248, 241, 0.12);
+        }
+
+        .deck {
+            margin-top: 12px;
+            padding: 18px;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: baseline;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .section-kicker {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .section-title {
+            margin: 0;
+            font-size: 22px;
+            letter-spacing: -0.03em;
+        }
+
+        .section-note {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.56;
+            max-width: 44ch;
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .action-grid.compact {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .action-card {
+            min-height: 280px;
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            background: var(--panel-strong);
+            border: 1px solid rgba(28, 23, 20, 0.08);
+            box-shadow: var(--shadow-md);
+            display: grid;
+            gap: 12px;
+            align-content: start;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            height: 4px;
+            background: var(--accent);
+        }
+
+        .action-card.alert::before {
+            background: var(--alert);
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .badge,
+        .method-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .badge {
+            background: rgba(28, 23, 20, 0.06);
+            color: var(--muted);
+            border: 1px solid rgba(28, 23, 20, 0.08);
+        }
+
+        .badge.demo {
+            background: rgba(7, 109, 97, 0.08);
+            color: var(--accent);
+            border-color: rgba(7, 109, 97, 0.16);
+        }
+
+        .method-badge {
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--muted);
+            border: 1px solid rgba(28, 23, 20, 0.08);
+        }
+
+        .action-title {
+            margin: 0;
+            font-size: 17px;
+            line-height: 1.32;
+            letter-spacing: -0.03em;
+        }
+
+        .action-desc {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.62;
+        }
+
+        .endpoint-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 16px;
+            border: 1px solid rgba(28, 23, 20, 0.08);
+            background: rgba(255, 255, 255, 0.72);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        .status-box {
+            display: grid;
+            gap: 8px;
+            margin-top: auto;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .status-meta {
+            font-size: 12px;
+            color: var(--muted);
+            font-family: var(--font-mono);
+        }
+
+        .status-text {
+            margin: 0;
+            min-height: 36px;
+            color: var(--ink);
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .response-panel {
+            margin-top: 12px;
+            padding: 18px;
+        }
+
+        .history-rail {
+            margin-top: 14px;
+        }
+
+        .history-chip {
+            border: 1px solid rgba(28, 23, 20, 0.08);
+            background: rgba(255, 255, 255, 0.72);
+            border-radius: 999px;
+            padding: 9px 12px;
+            font-size: 12px;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .history-chip.active {
+            background: rgba(7, 109, 97, 0.1);
+            border-color: rgba(7, 109, 97, 0.18);
+            color: var(--ink);
+        }
+
+        .response-meta {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            line-height: 1.54;
+        }
+
+        pre {
+            margin: 10px 0 0;
+            padding: 18px;
+            min-height: 240px;
+            border-radius: 22px;
+            border: 1px solid rgba(28, 23, 20, 0.08);
+            background:
+                radial-gradient(circle at top right, rgba(7, 109, 97, 0.18), transparent 30%),
+                linear-gradient(160deg, #171311 0%, #221c19 100%);
+            color: #f8f1e9;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.66;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .empty {
+            margin-top: 10px;
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px dashed rgba(28, 23, 20, 0.14);
+            background: rgba(255, 255, 255, 0.5);
+            color: var(--muted);
+            line-height: 1.58;
+        }
+
+        @media (max-width: 1180px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .action-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .action-grid.compact {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .shell {
+                width: min(100vw - 18px, 100%);
+                padding-top: 12px;
+            }
+
+            .hero,
+            .deck,
+            .response-panel {
+                padding: 14px;
+            }
+
+            h1 {
+                font-size: clamp(28px, 10vw, 42px);
+            }
+
+            .action-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-grid.compact {
+                grid-template-columns: 1fr;
+            }
+
+            .lang-switch {
+                width: 100%;
+            }
+
+            .lang-toggle {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <section class="hero panel">
+        <div class="hero-copy">
+            <div class="eyebrow" id="heroEyebrow">Manual Push Test Bench</div>
+            <h1 id="heroTitle">日报 / 晚报 / 盘中演示控制台</h1>
+            <p class="subtitle" id="heroSubtitle">
+                保留日报、晚报和盘中演示两类入口，既能快速做日常验证，也能现场展示盘中推送样式。
+            </p>
+            <div class="hero-inline-note">
+                <strong id="heroNoteTitle">注意</strong>
+                <span id="heroNoteBody">
+                    这个页面触发的是真实接口。只要后端仍指向测试群，就会真实发送企业微信消息；不会额外绕过推送逻辑。
+                </span>
+            </div>
+        </div>
+
+        <aside class="control-card">
+            <div>
+                <div class="control-kicker" id="controlKicker">Control Capsule</div>
+                <div class="control-title" id="controlTitle">控制舱</div>
+                <div class="control-note" id="controlNote">这里只保留必要控件：语言、目标地址和轻量执行状态。</div>
+            </div>
+
+            <div class="control-top">
+                <span class="pill neutral" id="originPill">Base URL --</span>
+                <span class="pill neutral" id="clockPill">当前时间 --</span>
+            </div>
+
+            <div class="field">
+                <label id="baseUrlLabel" for="baseUrlInput">API Base URL</label>
+                <input id="baseUrlInput" type="text" placeholder="默认使用当前站点，例如 http://localhost:8888">
+            </div>
+
+            <div class="field-row">
+                <button class="secondary" id="resetBaseUrlBtn" type="button">恢复同源</button>
+                <button class="warn" id="clearHistoryBtn" type="button">清空记录</button>
+            </div>
+
+            <div class="lang-switch" role="group" aria-label="Language switch">
+                <button class="secondary lang-toggle" id="langZhBtn" type="button">中文</button>
+                <button class="secondary lang-toggle" id="langEnBtn" type="button">English</button>
+            </div>
+
+            <div class="control-top">
+                <span class="pill neutral" id="runCountPill">总执行数 0</span>
+                <span class="pill neutral" id="latestRunPill">最近动作 --</span>
+            </div>
+
+            <a class="button-link secondary" id="backToDashboardLink" href="/ops-dashboard.html">返回运营看板</a>
+        </aside>
+    </section>
+
+    <section class="panel deck">
+        <div class="section-head">
+            <div>
+                <div class="section-kicker" id="sectionKicker">Quick Launch</div>
+                <h2 class="section-title" id="sectionTitle">日报 / 晚报触发</h2>
+            </div>
+            <div class="section-note" id="sectionNote">这四个入口保留给日报、晚报和整链路 smoke test。</div>
+        </div>
+        <div id="actionGrid" class="action-grid"></div>
+    </section>
+
+    <section class="panel deck">
+        <div class="section-head">
+            <div>
+                <div class="section-kicker" id="intradaySectionKicker">Intraday Demo</div>
+                <h2 class="section-title" id="intradaySectionTitle">盘中演示快讯</h2>
+            </div>
+            <div class="section-note" id="intradaySectionNote">这两条入口会用 mock 数据走真实企业微信推送链路，适合现场展示盘中机会卡片和风险卡片。</div>
+        </div>
+        <div id="intradayActionGrid" class="action-grid compact"></div>
+    </section>
+
+    <section class="panel response-panel">
+        <div class="section-head">
+            <div>
+                <div class="section-kicker" id="responseKicker">Response</div>
+                <h2 class="section-title" id="responseTitle">响应详情</h2>
+            </div>
+            <div class="section-note" id="responseNote">查看最近一次返回，或点下方时间胶囊切换到历史结果。</div>
+        </div>
+        <div id="historyRail" class="history-rail"></div>
+        <div id="responseMeta" class="response-meta">尚未执行任何动作</div>
+        <pre id="responseBody">等待执行...</pre>
+    </section>
+</div>
+
+<script>
+    const STORAGE_KEY = 'stock-manual-push-console-history';
+    const BASE_URL_KEY = 'stock-manual-push-console-base-url';
+    const LANGUAGE_KEY = 'stock-manual-push-console-language';
+
+    const COPY = {
+        zh: {
+            docTitle: '手动推送测试台',
+            eyebrow: 'Manual Push Test Bench',
+            heroTitle: '日报 / 晚报 / 盘中演示控制台',
+            heroSubtitle: '保留日报、晚报和盘中演示两类入口，既能快速做日常验证，也适合把项目推送样式现场展示给别人看。当前页面语言也会同步控制手动推送时的企业微信语言。',
+            controlKicker: 'Control Capsule',
+            controlTitle: '控制舱',
+            controlNote: '这里只保留必要控件：语言、目标地址和轻量执行状态。切换语言后，手动触发的企业微信内容也会跟着切换。',
+            baseUrlLabel: 'API Base URL',
+            baseUrlPlaceholder: '默认使用当前站点，例如 http://localhost:8888',
+            resetBaseUrl: '恢复同源',
+            clearHistory: '清空记录',
+            backToDashboard: '返回运营看板',
+            heroNoteTitle: '注意',
+            heroNoteBody: '这个页面触发的是真实接口。只要后端仍指向测试群，就会真实发送企业微信消息；不会额外绕过推送逻辑。',
+            sectionKicker: 'Quick Launch',
+            sectionTitle: '日报 / 晚报触发',
+            sectionNote: '这四个入口保留给日报、晚报和整链路 smoke test。',
+            intradaySectionKicker: 'Intraday Demo',
+            intradaySectionTitle: '盘中演示快讯',
+            intradaySectionNote: '这两条入口会用 mock 数据走真实企业微信推送链路，适合现场展示盘中机会卡片和风险卡片。',
+            responseKicker: 'Response',
+            responseTitle: '响应详情',
+            responseNote: '查看最近一次返回，或点下方时间胶囊切换到历史结果。',
+            runNow: '立即触发',
+            runningNow: '执行中...',
+            baseUrlPill: 'Base URL',
+            clockPill: '当前时间',
+            runCountPill: '总执行数',
+            latestRunPill: '最近动作',
+            latestEmpty: '--',
+            statusIdle: '未执行',
+            statusRunning: '执行中',
+            statusSuccess: '成功',
+            statusFailed: '失败',
+            noRecordSummary: '尚无执行记录',
+            noMessageSummary: '接口已执行，未返回 message 字段',
+            requestFailed: '请求失败',
+            responseEmptyMeta: '尚未执行任何动作',
+            responseEmptyBody: '等待执行...',
+            durationUnit: 'ms',
+            historyEmpty: '还没有执行记录。触发任一动作后，这里会保留最近 8 条历史。',
+            languageToggleLabel: '语言切换',
+            hotPath: 'Hot Path',
+            demoFeed: 'Demo Feed',
+            actionBadge: 'GET',
+            confirmAll: '这会顺序触发多条推送，确认继续吗？'
+        },
+        en: {
+            docTitle: 'Manual Push Console',
+            eyebrow: 'Manual Push Test Bench',
+            heroTitle: 'Reports & Intraday Push Console',
+            heroSubtitle: 'Keep both report checks and intraday showcase entries in one place so you can validate daily flows and demo live push layouts to others. The page language also controls the outgoing WeCom language for manual runs.',
+            controlKicker: 'Control Capsule',
+            controlTitle: 'Control Capsule',
+            controlNote: 'Only the essentials stay here: language, target origin, and a light run summary. Changing the language also changes the WeCom language for manual pushes.',
+            baseUrlLabel: 'API Base URL',
+            baseUrlPlaceholder: 'Use the current origin by default, for example http://localhost:8888',
+            resetBaseUrl: 'Reset to Same Origin',
+            clearHistory: 'Clear History',
+            backToDashboard: 'Back to Ops Dashboard',
+            heroNoteTitle: 'Live Push Warning',
+            heroNoteBody: 'This page calls the real endpoints. If the backend still points to a test WeCom group, it will send real messages and does not bypass push rules.',
+            sectionKicker: 'Quick Launch',
+            sectionTitle: 'Report Trigger Actions',
+            sectionNote: 'These four entries stay focused on the morning report, post-close decode, post-close risk digest, and the full smoke run.',
+            intradaySectionKicker: 'Intraday Demo',
+            intradaySectionTitle: 'Intraday Showcase Pushes',
+            intradaySectionNote: 'These entries use mock data but still go through the real WeCom delivery path, making them ideal for demos.',
+            responseKicker: 'Response',
+            responseTitle: 'Response Details',
+            responseNote: 'Inspect the latest payload or switch to an earlier result with the time capsules below.',
+            runNow: 'Run Now',
+            runningNow: 'Running...',
+            baseUrlPill: 'Base URL',
+            clockPill: 'Current Time',
+            runCountPill: 'Runs',
+            latestRunPill: 'Latest',
+            latestEmpty: '--',
+            statusIdle: 'Idle',
+            statusRunning: 'Running',
+            statusSuccess: 'Success',
+            statusFailed: 'Failed',
+            noRecordSummary: 'No execution record yet',
+            noMessageSummary: 'The endpoint completed without a message field',
+            requestFailed: 'Request failed',
+            responseEmptyMeta: 'No action has been executed yet',
+            responseEmptyBody: 'Waiting for a request...',
+            durationUnit: 'ms',
+            historyEmpty: 'No run history yet. After any action is triggered, the latest eight results will appear here.',
+            languageToggleLabel: 'Language switch',
+            hotPath: 'Hot Path',
+            demoFeed: 'Demo Feed',
+            actionBadge: 'GET',
+            confirmAll: 'This will trigger multiple push messages in sequence. Do you want to continue?'
+        }
+    };
+
+    const ACTIONS = [
+        {
+            id: 'aMorning',
+            group: 'reports',
+            title: { zh: 'A股盘前早报', en: 'A-Stock Pre-Market Report' },
+            desc: { zh: '验证盘前主题、机会和风险汇总。', en: 'Validate the morning theme, opportunity, and risk summary.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/a/morning',
+            tone: 'normal'
+        },
+        {
+            id: 'aEvening',
+            group: 'reports',
+            title: { zh: 'A股盘后复盘', en: 'A-Stock Post-Close Decode' },
+            desc: { zh: '验证收盘后主线、共振和个股机会拆解。', en: 'Validate post-close market lines, resonance, and stock setups.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/a/evening',
+            tone: 'normal'
+        },
+        {
+            id: 'aPostCloseRisk',
+            group: 'reports',
+            title: { zh: 'A股盘后风险速递', en: 'A-Stock Post-Close Risk Digest' },
+            desc: { zh: '验证尾盘和晚间风险摘要。', en: 'Validate the late-session and evening risk digest.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/a/post-close-risk',
+            tone: 'alert'
+        },
+        {
+            id: 'pushAll',
+            group: 'reports',
+            title: { zh: '一键触发全部推送', en: 'Run All Push Flows' },
+            desc: { zh: '做整链路冒烟，会连续触发多条消息。', en: 'Run the full smoke flow and trigger multiple messages in sequence.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/all',
+            tone: 'normal',
+            confirm: true
+        },
+        {
+            id: 'intradayOpportunityDemo',
+            group: 'intraday',
+            badge: { zh: '盘中演示', en: 'Demo Feed' },
+            title: { zh: '盘中机会快讯（演示）', en: 'Demo Intraday Opportunity Flash' },
+            desc: { zh: '发送一条带主线共振的盘中机会卡片，数据为 mock，但走真实企业微信发送。', en: 'Send a mocked intraday opportunity card with theme resonance through the real WeCom delivery path.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/a/demo/intraday-opportunity',
+            tone: 'normal'
+        },
+        {
+            id: 'intradayRiskDemo',
+            group: 'intraday',
+            badge: { zh: '盘中演示', en: 'Demo Feed' },
+            title: { zh: '盘中风险快讯（演示）', en: 'Demo Intraday Risk Flash' },
+            desc: { zh: '发送一条盘中风险卡片，适合展示风险预警样式与英文切换效果。', en: 'Send a mocked intraday risk card to showcase the risk-alert layout and the language switch.' },
+            method: 'GET',
+            endpoint: '/api/report-push/push/a/demo/intraday-risk',
+            tone: 'alert'
+        }
+    ];
+
+    const actionIndex = Object.fromEntries(ACTIONS.map(action => [action.id, action]));
+
+    const state = {
+        history: loadHistory(),
+        selectedId: null,
+        running: new Set(),
+        language: loadLanguage()
+    };
+
+    const actionGridEl = document.getElementById('actionGrid');
+    const intradayActionGridEl = document.getElementById('intradayActionGrid');
+    const historyRailEl = document.getElementById('historyRail');
+    const responseMetaEl = document.getElementById('responseMeta');
+    const responseBodyEl = document.getElementById('responseBody');
+    const baseUrlInputEl = document.getElementById('baseUrlInput');
+    const originPillEl = document.getElementById('originPill');
+    const clockPillEl = document.getElementById('clockPill');
+    const runCountPillEl = document.getElementById('runCountPill');
+    const latestRunPillEl = document.getElementById('latestRunPill');
+    const clearHistoryBtnEl = document.getElementById('clearHistoryBtn');
+    const resetBaseUrlBtnEl = document.getElementById('resetBaseUrlBtn');
+    const langZhBtnEl = document.getElementById('langZhBtn');
+    const langEnBtnEl = document.getElementById('langEnBtn');
+
+    function currentCopy() {
+        return COPY[state.language] || COPY.zh;
+    }
+
+    function localized(value) {
+        if (value && typeof value === 'object' && ('zh' in value || 'en' in value)) {
+            return value[state.language] || value.zh || value.en || '';
+        }
+        return value == null ? '' : String(value);
+    }
+
+    function localeTag() {
+        return state.language === 'en' ? 'en-GB' : 'zh-CN';
+    }
+
+    function loadHistory() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) {
+                return [];
+            }
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveHistory() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.history.slice(0, 8)));
+    }
+
+    function loadBaseUrl() {
+        return localStorage.getItem(BASE_URL_KEY) || window.location.origin;
+    }
+
+    function loadLanguage() {
+        const urlLanguage = new URLSearchParams(window.location.search).get('lang');
+        if (urlLanguage === 'zh' || urlLanguage === 'en') {
+            localStorage.setItem(LANGUAGE_KEY, urlLanguage);
+            return urlLanguage;
+        }
+        const saved = localStorage.getItem(LANGUAGE_KEY);
+        if (saved === 'zh' || saved === 'en') {
+            return saved;
+        }
+        return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    }
+
+    function persistLanguage(language) {
+        if (language !== 'zh' && language !== 'en') {
+            return;
+        }
+        state.language = language;
+        localStorage.setItem(LANGUAGE_KEY, language);
+        const url = new URL(window.location.href);
+        url.searchParams.set('lang', language);
+        window.history.replaceState({}, '', url);
+        applyStaticCopy();
+        rerender();
+    }
+
+    function normalizeBaseUrl(value) {
+        const trimmed = (value || '').trim();
+        return trimmed ? trimmed.replace(/\/+$/, '') : window.location.origin;
+    }
+
+    function buildUrl(endpoint) {
+        const url = new URL(normalizeBaseUrl(baseUrlInputEl.value) + endpoint);
+        url.searchParams.set('lang', state.language);
+        return url.toString();
+    }
+
+    function formatTime(dateLike) {
+        if (!dateLike) {
+            return '--';
+        }
+        const date = new Date(dateLike);
+        return Number.isNaN(date.getTime()) ? '--' : date.toLocaleString(localeTag(), { hour12: false });
+    }
+
+    function formatShortTime(dateLike) {
+        if (!dateLike) {
+            return '--';
+        }
+        const date = new Date(dateLike);
+        return Number.isNaN(date.getTime())
+                ? '--'
+                : date.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function latestEntryForAction(actionId) {
+        return state.history.find(item => item.id === actionId) || null;
+    }
+
+    function statusClass(entry) {
+        if (!entry) {
+            return 'neutral';
+        }
+        if (state.running.has(entry.id)) {
+            return 'running';
+        }
+        return entry.success ? 'good' : 'danger';
+    }
+
+    function statusLabel(entry) {
+        const copy = currentCopy();
+        if (!entry) {
+            return copy.statusIdle;
+        }
+        if (state.running.has(entry.id)) {
+            return copy.statusRunning;
+        }
+        return entry.success ? copy.statusSuccess : copy.statusFailed;
+    }
+
+    function renderActionGrid(gridEl, actions) {
+        const copy = currentCopy();
+        gridEl.innerHTML = actions.map(action => {
+            const latest = latestEntryForAction(action.id);
+            const latestTime = latest ? formatTime(latest.executedAt) : '--';
+            const latestDuration = latest && latest.durationMs != null ? `${latest.durationMs} ${copy.durationUnit}` : '--';
+            const toneClass = action.tone === 'alert' ? 'alert' : '';
+            const badgeLabel = localized(action.badge) || copy.hotPath;
+            const badgeClass = action.badge ? 'badge demo' : 'badge';
+            return `
+                <article class="action-card ${toneClass}">
+                    <div class="card-top">
+                        <span class="${badgeClass}">${escapeHtml(badgeLabel)}</span>
+                        <span class="method-badge">${escapeHtml(action.method || copy.actionBadge)}</span>
+                    </div>
+                    <h3 class="action-title">${escapeHtml(localized(action.title))}</h3>
+                    <p class="action-desc">${escapeHtml(localized(action.desc))}</p>
+                    <div class="endpoint-chip">${escapeHtml(action.endpoint)}</div>
+                    <div class="status-box">
+                        <div class="status-row">
+                            <span class="pill ${statusClass(latest)}">${escapeHtml(statusLabel(latest))}</span>
+                            <span class="status-meta">${escapeHtml(latestTime)} / ${escapeHtml(latestDuration)}</span>
+                        </div>
+                        <p class="status-text">${escapeHtml(latest ? latest.summary : copy.noRecordSummary)}</p>
+                    </div>
+                    <button class="${action.id === 'pushAll' ? 'primary' : 'secondary'}" type="button" data-run-action="${escapeHtml(action.id)}" ${state.running.has(action.id) ? 'disabled' : ''}>
+                        ${state.running.has(action.id) ? copy.runningNow : copy.runNow}
+                    </button>
+                </article>
+            `;
+        }).join('');
+    }
+
+    function renderActions() {
+        renderActionGrid(actionGridEl, ACTIONS.filter(action => action.group === 'reports'));
+        renderActionGrid(intradayActionGridEl, ACTIONS.filter(action => action.group === 'intraday'));
+    }
+
+    function renderHistoryRail() {
+        const copy = currentCopy();
+        if (!state.history.length) {
+            historyRailEl.innerHTML = `<div class="empty">${escapeHtml(copy.historyEmpty)}</div>`;
+            return;
+        }
+        historyRailEl.innerHTML = state.history.map(entry => {
+            const active = entry.requestId === state.selectedId ? ' active' : '';
+            const title = localized(actionIndex[entry.id]?.title) || entry.title;
+            return `<button class="history-chip${active}" type="button" data-history-id="${escapeHtml(entry.requestId)}">${escapeHtml(formatShortTime(entry.executedAt))} · ${escapeHtml(title)}</button>`;
+        }).join('');
+    }
+
+    function renderResponse() {
+        const copy = currentCopy();
+        if (!state.history.length) {
+            responseMetaEl.textContent = copy.responseEmptyMeta;
+            responseBodyEl.textContent = copy.responseEmptyBody;
+            return;
+        }
+        const selected = state.history.find(item => item.requestId === state.selectedId) || state.history[0];
+        state.selectedId = selected.requestId;
+        const title = localized(actionIndex[selected.id]?.title) || selected.title;
+        responseMetaEl.textContent = `${title} | ${selected.method} ${selected.endpoint} | ${formatTime(selected.executedAt)} | ${selected.durationMs} ${copy.durationUnit} | HTTP ${selected.statusCode}`;
+        responseBodyEl.textContent = typeof selected.body === 'string'
+                ? selected.body
+                : JSON.stringify(selected.body, null, 2);
+    }
+
+    function renderControlSummary() {
+        const copy = currentCopy();
+        const latest = state.history[0];
+        runCountPillEl.textContent = `${copy.runCountPill} ${state.history.length}`;
+        latestRunPillEl.textContent = `${copy.latestRunPill} ${latest ? formatShortTime(latest.executedAt) : copy.latestEmpty}`;
+    }
+
+    function rerender() {
+        renderActions();
+        renderHistoryRail();
+        renderResponse();
+        renderControlSummary();
+        bindInteractiveHandlers();
+    }
+
+    function summarizeBody(body, fallbackText) {
+        const copy = currentCopy();
+        if (body && typeof body === 'object' && typeof body.message === 'string' && body.message.trim()) {
+            return body.message.trim();
+        }
+        if (typeof fallbackText === 'string' && fallbackText.trim()) {
+            return fallbackText.trim().slice(0, 120);
+        }
+        return copy.noMessageSummary;
+    }
+
+    async function runAction(actionId) {
+        const action = actionIndex[actionId];
+        if (!action || state.running.has(actionId)) {
+            return;
+        }
+        const copy = currentCopy();
+        if (action.confirm && !window.confirm(copy.confirmAll)) {
+            return;
+        }
+
+        state.running.add(actionId);
+        rerender();
+
+        const startedAt = new Date();
+        const startedTs = performance.now();
+        const url = buildUrl(action.endpoint);
+        let entry;
+
+        try {
+            const response = await fetch(url, {
+                method: action.method,
+                headers: { 'Accept': 'application/json' }
+            });
+            const responseText = await response.text();
+            let body;
+            try {
+                body = responseText ? JSON.parse(responseText) : {};
+            } catch (error) {
+                body = responseText;
+            }
+
+            const durationMs = Math.round(performance.now() - startedTs);
+            const success = response.ok && (!(body && typeof body === 'object' && body.success === false));
+            entry = {
+                requestId: `${action.id}-${startedAt.getTime()}`,
+                id: action.id,
+                title: localized(action.title),
+                method: action.method,
+                endpoint: action.endpoint,
+                executedAt: startedAt.toISOString(),
+                durationMs,
+                statusCode: response.status,
+                success,
+                summary: summarizeBody(body, responseText),
+                body
+            };
+        } catch (error) {
+            entry = {
+                requestId: `${action.id}-${startedAt.getTime()}`,
+                id: action.id,
+                title: localized(action.title),
+                method: action.method,
+                endpoint: action.endpoint,
+                executedAt: startedAt.toISOString(),
+                durationMs: Math.round(performance.now() - startedTs),
+                statusCode: 0,
+                success: false,
+                summary: error && error.message ? error.message : copy.requestFailed,
+                body: {
+                    success: false,
+                    message: error && error.message ? error.message : copy.requestFailed,
+                    requestUrl: url
+                }
+            };
+        } finally {
+            state.running.delete(actionId);
+        }
+
+        state.history.unshift(entry);
+        state.history = state.history.slice(0, 8);
+        state.selectedId = entry.requestId;
+        saveHistory();
+        rerender();
+    }
+
+    function bindInteractiveHandlers() {
+        document.querySelectorAll('[data-run-action]').forEach(button => {
+            button.onclick = () => runAction(button.getAttribute('data-run-action'));
+        });
+        document.querySelectorAll('[data-history-id]').forEach(button => {
+            button.onclick = () => {
+                state.selectedId = button.getAttribute('data-history-id');
+                renderHistoryRail();
+                renderResponse();
+            };
+        });
+    }
+
+    function syncHeader() {
+        const copy = currentCopy();
+        const baseUrl = normalizeBaseUrl(baseUrlInputEl.value);
+        originPillEl.textContent = `${copy.baseUrlPill} ${baseUrl}`;
+        clockPillEl.textContent = `${copy.clockPill} ${new Date().toLocaleString(localeTag(), { hour12: false })}`;
+    }
+
+    function applyStaticCopy() {
+        const copy = currentCopy();
+        document.documentElement.lang = state.language === 'en' ? 'en' : 'zh-CN';
+        document.title = copy.docTitle;
+        document.getElementById('heroEyebrow').textContent = copy.eyebrow;
+        document.getElementById('heroTitle').textContent = copy.heroTitle;
+        document.getElementById('heroSubtitle').textContent = copy.heroSubtitle;
+        document.getElementById('controlKicker').textContent = copy.controlKicker;
+        document.getElementById('controlTitle').textContent = copy.controlTitle;
+        document.getElementById('controlNote').textContent = copy.controlNote;
+        document.getElementById('baseUrlLabel').textContent = copy.baseUrlLabel;
+        baseUrlInputEl.placeholder = copy.baseUrlPlaceholder;
+        resetBaseUrlBtnEl.textContent = copy.resetBaseUrl;
+        clearHistoryBtnEl.textContent = copy.clearHistory;
+        document.getElementById('backToDashboardLink').textContent = copy.backToDashboard;
+        document.getElementById('heroNoteTitle').textContent = copy.heroNoteTitle;
+        document.getElementById('heroNoteBody').textContent = copy.heroNoteBody;
+        document.getElementById('sectionKicker').textContent = copy.sectionKicker;
+        document.getElementById('sectionTitle').textContent = copy.sectionTitle;
+        document.getElementById('sectionNote').textContent = copy.sectionNote;
+        document.getElementById('intradaySectionKicker').textContent = copy.intradaySectionKicker;
+        document.getElementById('intradaySectionTitle').textContent = copy.intradaySectionTitle;
+        document.getElementById('intradaySectionNote').textContent = copy.intradaySectionNote;
+        document.getElementById('responseKicker').textContent = copy.responseKicker;
+        document.getElementById('responseTitle').textContent = copy.responseTitle;
+        document.getElementById('responseNote').textContent = copy.responseNote;
+        langZhBtnEl.classList.toggle('active', state.language === 'zh');
+        langEnBtnEl.classList.toggle('active', state.language === 'en');
+        langZhBtnEl.setAttribute('aria-pressed', String(state.language === 'zh'));
+        langEnBtnEl.setAttribute('aria-pressed', String(state.language === 'en'));
+        document.querySelector('.lang-switch').setAttribute('aria-label', copy.languageToggleLabel);
+        syncHeader();
+        renderControlSummary();
+    }
+
+    function persistBaseUrl() {
+        const normalized = normalizeBaseUrl(baseUrlInputEl.value);
+        baseUrlInputEl.value = normalized;
+        localStorage.setItem(BASE_URL_KEY, normalized);
+        syncHeader();
+    }
+
+    baseUrlInputEl.value = loadBaseUrl();
+    baseUrlInputEl.addEventListener('change', persistBaseUrl);
+    baseUrlInputEl.addEventListener('blur', persistBaseUrl);
+
+    clearHistoryBtnEl.addEventListener('click', () => {
+        state.history = [];
+        state.selectedId = null;
+        localStorage.removeItem(STORAGE_KEY);
+        rerender();
+    });
+
+    resetBaseUrlBtnEl.addEventListener('click', () => {
+        baseUrlInputEl.value = window.location.origin;
+        persistBaseUrl();
+    });
+
+    langZhBtnEl.addEventListener('click', () => persistLanguage('zh'));
+    langEnBtnEl.addEventListener('click', () => persistLanguage('en'));
+
+    applyStaticCopy();
+    setInterval(syncHeader, 1000);
+    rerender();
+</script>
+</body>
+</html>

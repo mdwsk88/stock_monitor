@@ -13,6 +13,7 @@ import com.dawei.mapper.MacroThemeEventMapper;
 import com.dawei.mapper.MacroThemeStockRelMapper;
 import com.dawei.service.AStockPushLogService;
 import com.dawei.service.MarketStateService;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -49,6 +51,8 @@ class MacroRealtimePushServiceTest {
     private WeComApi weComApi;
 
     private MacroRealtimePushService service;
+    private MarketAlertCoordinatorService marketAlertCoordinatorService;
+    private LocalDateTime intradayNow;
 
     @BeforeEach
     void setUp() {
@@ -61,23 +65,31 @@ class MacroRealtimePushServiceTest {
         filterConfig.setMacroRealtimePushCooldownMinutes(90);
         filterConfig.setMacroRealtimeScanWindowMinutes(60);
         filterConfig.setMarketBreadthSampleWarnThreshold(200);
+        filterConfig.setMarketAlertFamilyCooldownMinutes(120);
+        filterConfig.setMarketPanicIndexDropThreshold(-3.0d);
+        filterConfig.setMarketPanicLimitDownThreshold(150);
+        filterConfig.setMarketPanicBreadthThreshold(0.25d);
+        marketAlertCoordinatorService = new MarketAlertCoordinatorService(aStockPushLogService, filterConfig);
         service = new MacroRealtimePushService(
                 macroThemeEventMapper,
                 macroThemeStockRelMapper,
                 aStockPushLogService,
                 marketStateService,
+                marketAlertCoordinatorService,
                 weComApi,
                 filterConfig
         );
+        intradayNow = LocalDateTime.of(2026, 4, 1, 10, 20);
     }
 
     @Test
     void handlePersistedEvent_ShouldSendRiskAlert() {
         when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.DEFENSIVE));
         when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MACRO_REALTIME_RISK), any())).thenReturn(false);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(null);
         when(macroThemeStockRelMapper.selectList(any())).thenReturn(List.of(sampleRel("600030", "中信证券")));
 
-        boolean pushed = service.handlePersistedEvent(riskEvent());
+        boolean pushed = service.handlePersistedEvent(riskEvent(), intradayNow);
 
         assertTrue(pushed);
         verify(weComApi).sendMarkdownMessage(any(), eq(WeComApi.MarketType.A));
@@ -90,7 +102,7 @@ class MacroRealtimePushServiceTest {
     void handlePersistedEvent_ShouldSuppressWeakOpportunityInDefensiveState() {
         when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.DEFENSIVE));
 
-        boolean pushed = service.handlePersistedEvent(opportunityEvent(96));
+        boolean pushed = service.handlePersistedEvent(opportunityEvent(96), intradayNow);
 
         assertFalse(pushed);
         verify(weComApi, never()).sendMarkdownMessage(any(), any());
@@ -103,9 +115,10 @@ class MacroRealtimePushServiceTest {
         when(macroThemeEventMapper.selectList(any())).thenReturn(List.of(opportunityEvent(90), riskEvent()));
         when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MACRO_REALTIME_OPPORTUNITY), any())).thenReturn(false);
         when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MACRO_REALTIME_RISK), any())).thenReturn(true);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(null);
         when(macroThemeStockRelMapper.selectList(any())).thenReturn(List.of());
 
-        MacroRealtimePushScanResult result = service.scanAndPushRecentEvents();
+        MacroRealtimePushScanResult result = service.scanAndPushRecentEvents(intradayNow);
 
         assertEquals(2, result.getScannedCount());
         assertEquals(1, result.getPushedCount());
@@ -123,11 +136,96 @@ class MacroRealtimePushServiceTest {
                 snapshot(MarketState.RISK_ON, MarketSnapshotHealth.DISCONNECTED, "TENCENT_QUOTE+NO_BREADTH", 0)
         );
 
-        boolean pushed = service.handlePersistedEvent(opportunityEvent(88));
+        boolean pushed = service.handlePersistedEvent(opportunityEvent(88), intradayNow);
 
         assertFalse(pushed);
         verify(weComApi, never()).sendMarkdownMessage(any(), any());
         verify(aStockPushLogService, never()).recordPush(any());
+    }
+
+    @Test
+    void handlePersistedEvent_ShouldSkipOutsideAttentionWindow() {
+        when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.RISK_ON));
+
+        boolean pushed = service.handlePersistedEvent(opportunityEvent(92), LocalDateTime.of(2026, 4, 1, 7, 30));
+
+        assertFalse(pushed);
+        verify(weComApi, never()).sendMarkdownMessage(any(), any());
+        verify(aStockPushLogService, never()).recordPush(any());
+    }
+
+    @Test
+    void handlePersistedEvent_ShouldSuppressSameFamilyDuringCooldownWindow() {
+        when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.RISK_ON));
+        when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MACRO_REALTIME_OPPORTUNITY), any())).thenReturn(false);
+        AStockPushLog recentFamilyPush = new AStockPushLog();
+        recentFamilyPush.setPushType(AStockPushType.MARKET_PULSE_OPPORTUNITY.name());
+        recentFamilyPush.setPushKey("market-pulse|RISK_ON");
+        recentFamilyPush.setSignalScore(100);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(recentFamilyPush);
+
+        boolean pushed = service.handlePersistedEvent(opportunityEvent(95), intradayNow);
+
+        assertFalse(pushed);
+        verify(weComApi, never()).sendMarkdownMessage(any(), any());
+        verify(aStockPushLogService, never()).recordPush(any());
+    }
+
+    @Test
+    void handlePersistedEvent_ShouldRequireTradableTextConfirmation() {
+        when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.RISK_ON));
+
+        MacroThemeEvent noisyEvent = opportunityEvent(98);
+        noisyEvent.setTitle("王毅同德国外长瓦德富尔通电话");
+        noisyEvent.setSummary("双方就中德关系交换意见。");
+        noisyEvent.setSourceName("外交部");
+
+        boolean pushed = service.handlePersistedEvent(noisyEvent, intradayNow);
+
+        assertFalse(pushed);
+        verify(weComApi, never()).sendMarkdownMessage(any(), any());
+        verify(aStockPushLogService, never()).recordPush(any());
+    }
+
+    @Test
+    void handlePersistedEvent_ShouldRenderEnglishMarkdownWhenLanguageSwitchOn() {
+        StockFilterConfig filterConfig = new StockFilterConfig();
+        filterConfig.setMacroRealtimeRiskThreshold(82);
+        filterConfig.setMacroRealtimeRiskThresholdDefensive(78);
+        filterConfig.setMacroRealtimeOpportunityThreshold(92);
+        filterConfig.setMacroRealtimeOpportunityThresholdRiskOn(86);
+        filterConfig.setMacroRealtimeOpportunityThresholdOverheat(90);
+        filterConfig.setMacroRealtimePushCooldownMinutes(90);
+        filterConfig.setMacroRealtimeScanWindowMinutes(60);
+        filterConfig.setMarketBreadthSampleWarnThreshold(200);
+        filterConfig.setMarketAlertFamilyCooldownMinutes(120);
+        filterConfig.setMarketPanicIndexDropThreshold(-3.0d);
+        filterConfig.setMarketPanicLimitDownThreshold(150);
+        filterConfig.setMarketPanicBreadthThreshold(0.25d);
+        MarketAlertCoordinatorService coordinator = new MarketAlertCoordinatorService(aStockPushLogService, filterConfig);
+        MacroRealtimePushService englishService = new MacroRealtimePushService(
+                macroThemeEventMapper,
+                macroThemeStockRelMapper,
+                aStockPushLogService,
+                marketStateService,
+                coordinator,
+                weComApi,
+                filterConfig,
+                new PushLanguageService("en")
+        );
+        when(marketStateService.getLatestSnapshot()).thenReturn(snapshot(MarketState.DEFENSIVE));
+        when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MACRO_REALTIME_RISK), any())).thenReturn(false);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(null);
+        when(macroThemeStockRelMapper.selectList(any())).thenReturn(List.of(sampleRel("600030", "中信证券")));
+
+        boolean pushed = englishService.handlePersistedEvent(riskEvent(), intradayNow);
+
+        assertTrue(pushed);
+        ArgumentCaptor<String> markdownCaptor = ArgumentCaptor.forClass(String.class);
+        verify(weComApi).sendMarkdownMessage(markdownCaptor.capture(), eq(WeComApi.MarketType.A));
+        assertTrue(markdownCaptor.getValue().contains("Macro Systemic Risk Alert"));
+        assertTrue(markdownCaptor.getValue().contains("Market Regime"));
+        assertTrue(markdownCaptor.getValue().contains("Related Stocks"));
     }
 
     private MarketSnapshot snapshot(MarketState state,

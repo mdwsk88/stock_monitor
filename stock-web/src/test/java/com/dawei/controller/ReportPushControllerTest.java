@@ -4,13 +4,16 @@ import com.dawei.entity.AStockPushHealthCheckResult;
 import com.dawei.entity.MacroRealtimePushScanResult;
 import com.dawei.entity.MarketState;
 import com.dawei.scheduler.MorningReportScheduler;
+import com.dawei.service.impl.AStockIntradayDemoPushService;
 import com.dawei.service.impl.AStockPushHealthAlertService;
 import com.dawei.service.impl.MacroRealtimePushService;
+import com.dawei.utils.PushLanguageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -32,7 +35,11 @@ class ReportPushControllerTest {
     @Mock
     private AStockPushHealthAlertService aStockPushHealthAlertService;
     @Mock
+    private AStockIntradayDemoPushService aStockIntradayDemoPushService;
+    @Mock
     private MacroRealtimePushService macroRealtimePushService;
+    @Spy
+    private PushLanguageService pushLanguageService = new PushLanguageService("zh");
 
     @InjectMocks
     private ReportPushController reportPushController;
@@ -42,7 +49,7 @@ class ReportPushControllerTest {
     void testPushUSMorningReportSuccess() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(true);
 
-        Map<String, Object> result = reportPushController.pushUSMorningReport();
+        Map<String, Object> result = reportPushController.pushUSMorningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("美股早报（隔夜复盘）推送成功", result.get("message"));
@@ -56,7 +63,7 @@ class ReportPushControllerTest {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(true);
         doThrow(new RuntimeException("数据库连接失败")).when(morningReportScheduler).pushUSMorningReportManually();
 
-        Map<String, Object> result = reportPushController.pushUSMorningReport();
+        Map<String, Object> result = reportPushController.pushUSMorningReport(null);
 
         assertFalse((Boolean) result.get("success"));
         assertTrue(((String) result.get("message")).contains("推送失败"));
@@ -69,7 +76,7 @@ class ReportPushControllerTest {
     void testPushUSMorningReportDisabled() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(false);
 
-        Map<String, Object> result = reportPushController.pushUSMorningReport();
+        Map<String, Object> result = reportPushController.pushUSMorningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("美股推送当前已关闭，已跳过", result.get("message"));
@@ -79,11 +86,29 @@ class ReportPushControllerTest {
     @Test
     @DisplayName("测试手动触发A股盘前早报 - 成功")
     void testPushAMorningReportSuccess() {
-        Map<String, Object> result = reportPushController.pushAMorningReport();
+        Map<String, Object> result = reportPushController.pushAMorningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("A股盘前早报推送成功", result.get("message"));
         assertEquals("过去24小时（昨天8:30到今天8:30）", result.get("dataRange"));
+        assertEquals("zh", result.get("language"));
+        verify(morningReportScheduler, times(1)).pushAMorningReportManually();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股盘前早报 - 英文模式会切换企业微信语言上下文")
+    void testPushAMorningReportEnglishOverride() {
+        doAnswer(invocation -> {
+            assertTrue(pushLanguageService.isEnglish());
+            return null;
+        }).when(morningReportScheduler).pushAMorningReportManually();
+
+        Map<String, Object> result = reportPushController.pushAMorningReport("en");
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A-stock pre-market report pushed successfully", result.get("message"));
+        assertEquals("Past 24 hours (08:30 yesterday to 08:30 today)", result.get("dataRange"));
+        assertEquals("en", result.get("language"));
         verify(morningReportScheduler, times(1)).pushAMorningReportManually();
     }
 
@@ -92,7 +117,7 @@ class ReportPushControllerTest {
     void testPushAMorningReportFailure() {
         doThrow(new RuntimeException("API限流")).when(morningReportScheduler).pushAMorningReportManually();
 
-        Map<String, Object> result = reportPushController.pushAMorningReport();
+        Map<String, Object> result = reportPushController.pushAMorningReport(null);
 
         assertFalse((Boolean) result.get("success"));
         assertTrue(((String) result.get("message")).contains("API限流"));
@@ -102,7 +127,7 @@ class ReportPushControllerTest {
     @Test
     @DisplayName("测试手动触发A股盘后复盘 - 成功")
     void testPushAEveningReportSuccess() {
-        Map<String, Object> result = reportPushController.pushAEveningReport();
+        Map<String, Object> result = reportPushController.pushAEveningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("A股盘后复盘推送成功", result.get("message"));
@@ -115,7 +140,7 @@ class ReportPushControllerTest {
     void testPushAEveningReportFailure() {
         doThrow(new RuntimeException("网络超时")).when(morningReportScheduler).pushAEveningReportManually();
 
-        Map<String, Object> result = reportPushController.pushAEveningReport();
+        Map<String, Object> result = reportPushController.pushAEveningReport(null);
 
         assertFalse((Boolean) result.get("success"));
         assertTrue(((String) result.get("message")).contains("网络超时"));
@@ -125,7 +150,7 @@ class ReportPushControllerTest {
     @Test
     @DisplayName("测试手动触发A股盘后风险速递 - 成功")
     void testPushAPostCloseRiskDigestSuccess() {
-        Map<String, Object> result = reportPushController.pushAPostCloseRiskDigest();
+        Map<String, Object> result = reportPushController.pushAPostCloseRiskDigest(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("A股盘后风险速递推送成功", result.get("message"));
@@ -134,14 +159,58 @@ class ReportPushControllerTest {
     }
 
     @Test
-    @DisplayName("测试手动触发A股实时链路健康巡检 - 触发告警")
-    void testPushARealtimeHealthAlertTriggered() {
-        when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(healthCheckResult(true, true));
+    @DisplayName("测试手动触发A股盘中机会快讯演示 - 英文模式生效")
+    void testPushAIntradayOpportunityDemoEnglish() {
+        when(aStockIntradayDemoPushService.pushOpportunityDemo()).thenAnswer(invocation -> {
+            assertTrue(pushLanguageService.isEnglish());
+            return new AStockIntradayDemoPushService.DemoPushResult(
+                    "intradayOpportunityDemo",
+                    "Demo Intraday Opportunity Flash",
+                    "Mock data was sent through the real WeCom delivery path",
+                    "# demo",
+                    null,
+                    true
+            );
+        });
 
-        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert();
+        Map<String, Object> result = reportPushController.pushAIntradayOpportunityDemo("en");
 
         assertTrue((Boolean) result.get("success"));
-        assertEquals("A股实时链路健康告警已推送", result.get("message"));
+        assertEquals("A-stock intraday opportunity demo pushed successfully", result.get("message"));
+        assertEquals("Demo data (mock intraday feed)", result.get("dataRange"));
+        assertEquals("en", result.get("language"));
+        verify(aStockIntradayDemoPushService, times(1)).pushOpportunityDemo();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股盘中风险快讯演示 - 成功")
+    void testPushAIntradayRiskDemoSuccess() {
+        when(aStockIntradayDemoPushService.pushRiskDemo()).thenReturn(new AStockIntradayDemoPushService.DemoPushResult(
+                "intradayRiskDemo",
+                "盘中风险快讯（演示）",
+                "mock 数据已通过真实企业微信链路发送",
+                "# demo",
+                null,
+                true
+        ));
+
+        Map<String, Object> result = reportPushController.pushAIntradayRiskDemo(null);
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A股盘中风险快讯（演示）推送成功", result.get("message"));
+        assertEquals("演示数据（mock intraday feed）", result.get("dataRange"));
+        verify(aStockIntradayDemoPushService, times(1)).pushRiskDemo();
+    }
+
+    @Test
+    @DisplayName("测试手动触发A股实时链路健康巡检 - 触发告警")
+    void testPushARealtimeHealthAlertTriggered() {
+        when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(healthCheckResult(true, false));
+
+        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert(null);
+
+        assertTrue((Boolean) result.get("success"));
+        assertEquals("A股实时链路发现异常，结果已保留，不再推送企业微信", result.get("message"));
         verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
     }
 
@@ -150,7 +219,7 @@ class ReportPushControllerTest {
     void testPushARealtimeHealthAlertHealthy() {
         when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(healthCheckResult(false, false));
 
-        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert();
+        Map<String, Object> result = reportPushController.pushARealtimeHealthAlert(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("A股实时链路健康，未触发健康告警", result.get("message"));
@@ -162,7 +231,7 @@ class ReportPushControllerTest {
     void testPushMacroRealtimeAlerts() {
         when(macroRealtimePushService.scanAndPushRecentEvents()).thenReturn(macroScanResult(2, 1, 1));
 
-        Map<String, Object> result = reportPushController.pushMacroRealtimeAlerts();
+        Map<String, Object> result = reportPushController.pushMacroRealtimeAlerts(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("宏观快讯实时推送已执行", result.get("message"));
@@ -174,7 +243,7 @@ class ReportPushControllerTest {
     void testPushUSEveningReportSuccess() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(true);
 
-        Map<String, Object> result = reportPushController.pushUSEveningReport();
+        Map<String, Object> result = reportPushController.pushUSEveningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("美股夜报（盘前预警）推送成功", result.get("message"));
@@ -188,7 +257,7 @@ class ReportPushControllerTest {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(true);
         doThrow(new RuntimeException("AI服务异常")).when(morningReportScheduler).pushUSEveningReportManually();
 
-        Map<String, Object> result = reportPushController.pushUSEveningReport();
+        Map<String, Object> result = reportPushController.pushUSEveningReport(null);
 
         assertFalse((Boolean) result.get("success"));
         assertTrue(((String) result.get("message")).contains("AI服务异常"));
@@ -200,7 +269,7 @@ class ReportPushControllerTest {
     void testPushUSEveningReportDisabled() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(false);
 
-        Map<String, Object> result = reportPushController.pushUSEveningReport();
+        Map<String, Object> result = reportPushController.pushUSEveningReport(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("美股推送当前已关闭，已跳过", result.get("message"));
@@ -212,7 +281,7 @@ class ReportPushControllerTest {
     void testPushAllReportsAllSuccess() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(true);
 
-        Map<String, Object> result = reportPushController.pushAllReports();
+        Map<String, Object> result = reportPushController.pushAllReports(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("所有推送任务执行完成", result.get("message"));
@@ -237,7 +306,7 @@ class ReportPushControllerTest {
         doThrow(new RuntimeException("美股早报失败")).when(morningReportScheduler).pushUSMorningReportManually();
         doThrow(new RuntimeException("A股复盘失败")).when(morningReportScheduler).pushAEveningReportManually();
 
-        Map<String, Object> result = reportPushController.pushAllReports();
+        Map<String, Object> result = reportPushController.pushAllReports(null);
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("所有推送任务执行完成", result.get("message"));
@@ -259,7 +328,7 @@ class ReportPushControllerTest {
     void testPushAllReportsUsDisabled() {
         when(morningReportScheduler.isUsPushEnabled()).thenReturn(false);
 
-        Map<String, Object> result = reportPushController.pushAllReports();
+        Map<String, Object> result = reportPushController.pushAllReports(null);
 
         assertTrue((Boolean) result.get("success"));
         @SuppressWarnings("unchecked")

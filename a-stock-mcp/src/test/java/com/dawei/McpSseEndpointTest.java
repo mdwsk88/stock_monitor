@@ -9,7 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = "spring.datasource.url=jdbc:h2:mem:mcp_sse_testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
 )
 @AutoConfigureWebTestClient

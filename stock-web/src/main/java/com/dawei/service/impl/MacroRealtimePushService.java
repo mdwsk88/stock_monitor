@@ -7,6 +7,7 @@ import com.dawei.entity.AStockPushType;
 import com.dawei.entity.MacroRealtimePushScanResult;
 import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.MacroThemeStockRel;
+import com.dawei.entity.MarketAlertFamily;
 import com.dawei.entity.MarketSnapshot;
 import com.dawei.entity.MarketSnapshotHealth;
 import com.dawei.entity.MarketState;
@@ -14,10 +15,13 @@ import com.dawei.mapper.MacroThemeEventMapper;
 import com.dawei.mapper.MacroThemeStockRelMapper;
 import com.dawei.service.AStockPushLogService;
 import com.dawei.service.MarketStateService;
+import com.dawei.utils.AStockMarketClock;
 import com.dawei.utils.MarketStateSafety;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -54,29 +58,58 @@ public class MacroRealtimePushService {
     private final MacroThemeStockRelMapper macroThemeStockRelMapper;
     private final AStockPushLogService aStockPushLogService;
     private final MarketStateService marketStateService;
+    private final MarketAlertCoordinatorService marketAlertCoordinatorService;
     private final WeComApi weComApi;
     private final StockFilterConfig filterConfig;
+    private final PushLanguageService pushLanguageService;
 
     public MacroRealtimePushService(MacroThemeEventMapper macroThemeEventMapper,
                                     MacroThemeStockRelMapper macroThemeStockRelMapper,
                                     AStockPushLogService aStockPushLogService,
                                     MarketStateService marketStateService,
+                                    MarketAlertCoordinatorService marketAlertCoordinatorService,
                                     WeComApi weComApi,
                                     StockFilterConfig filterConfig) {
+        this(macroThemeEventMapper, macroThemeStockRelMapper, aStockPushLogService, marketStateService,
+                marketAlertCoordinatorService, weComApi, filterConfig, new PushLanguageService());
+    }
+
+    @Autowired
+    public MacroRealtimePushService(MacroThemeEventMapper macroThemeEventMapper,
+                                    MacroThemeStockRelMapper macroThemeStockRelMapper,
+                                    AStockPushLogService aStockPushLogService,
+                                    MarketStateService marketStateService,
+                                    MarketAlertCoordinatorService marketAlertCoordinatorService,
+                                    WeComApi weComApi,
+                                    StockFilterConfig filterConfig,
+                                    PushLanguageService pushLanguageService) {
         this.macroThemeEventMapper = macroThemeEventMapper;
         this.macroThemeStockRelMapper = macroThemeStockRelMapper;
         this.aStockPushLogService = aStockPushLogService;
         this.marketStateService = marketStateService;
+        this.marketAlertCoordinatorService = marketAlertCoordinatorService;
         this.weComApi = weComApi;
         this.filterConfig = filterConfig;
+        this.pushLanguageService = pushLanguageService;
     }
 
     public boolean handlePersistedEvent(MacroThemeEvent event) {
-        return pushIfNeeded(event, marketStateService.getLatestSnapshot(), LocalDateTime.now());
+        return handlePersistedEvent(event, LocalDateTime.now());
+    }
+
+    boolean handlePersistedEvent(MacroThemeEvent event, LocalDateTime now) {
+        return pushIfNeeded(event, marketStateService.getLatestSnapshot(), now);
     }
 
     public MacroRealtimePushScanResult scanAndPushRecentEvents() {
-        LocalDateTime now = LocalDateTime.now();
+        return scanAndPushRecentEvents(LocalDateTime.now());
+    }
+
+    MacroRealtimePushScanResult scanAndPushRecentEvents(LocalDateTime now) {
+        MacroRealtimePushScanResult result = new MacroRealtimePushScanResult();
+        if (!AStockMarketClock.isMarketAttentionWindow(now)) {
+            return result;
+        }
         LocalDateTime startTime = now.minusMinutes(filterConfig.getMacroRealtimeScanWindowMinutes());
         int minScore = Math.min(
                 filterConfig.getMacroRealtimeRiskThresholdDefensive(),
@@ -90,7 +123,6 @@ public class MacroRealtimePushService {
                 .last("LIMIT 20"));
         MarketSnapshot snapshot = marketStateService.getLatestSnapshot();
 
-        MacroRealtimePushScanResult result = new MacroRealtimePushScanResult();
         result.setScannedCount(events.size());
         for (MacroThemeEvent event : events) {
             if (pushIfNeeded(event, snapshot, now)) {
@@ -104,6 +136,11 @@ public class MacroRealtimePushService {
     }
 
     private boolean pushIfNeeded(MacroThemeEvent event, MarketSnapshot snapshot, LocalDateTime now) {
+        if (!AStockMarketClock.isMarketAttentionWindow(now)) {
+            log.debug("宏观实时推送跳过，原因=当前不在A股关注窗口，title={}",
+                    event != null ? event.getTitle() : "unknown");
+            return false;
+        }
         MacroPushDecision decision = classify(event, snapshot);
         if (!decision.shouldPush()) {
             return false;
@@ -113,6 +150,21 @@ public class MacroRealtimePushService {
         LocalDateTime cooldownStart = now.minusMinutes(filterConfig.getMacroRealtimePushCooldownMinutes());
         if (aStockPushLogService.hasRecentPush(pushKey, decision.pushType(), cooldownStart)) {
             log.info("宏观实时推送命中冷却期，theme={}, title={}", event.getThemeName(), event.getTitle());
+            return false;
+        }
+
+        MarketAlertCoordinatorService.AlertDispatchDecision dispatchDecision =
+                marketAlertCoordinatorService.evaluate(
+                        MarketAlertFamily.fromPushType(decision.pushType()),
+                        decision.pushType(),
+                        pushKey,
+                        snapshot,
+                        safeInt(event.getSignalScore()),
+                        now
+                );
+        if (!dispatchDecision.allowed()) {
+            log.info("宏观实时推送被协调器抑制，theme={}, title={}, reason={}",
+                    event.getThemeName(), event.getTitle(), dispatchDecision.reason());
             return false;
         }
 
@@ -172,13 +224,15 @@ public class MacroRealtimePushService {
     }
 
     private boolean isRiskCandidate(MacroThemeEvent event) {
-        return RISK_EVENT_TYPES.contains(StringUtils.defaultString(event.getEventType()))
-                || containsAny(event, RISK_KEYWORDS);
+        boolean typeMatched = RISK_EVENT_TYPES.contains(StringUtils.defaultString(event.getEventType()));
+        boolean textMatched = containsAny(event, RISK_KEYWORDS);
+        return textMatched && (typeMatched || hasStrongRiskSource(event));
     }
 
     private boolean isOpportunityCandidate(MacroThemeEvent event) {
-        return OPPORTUNITY_EVENT_TYPES.contains(StringUtils.defaultString(event.getEventType()))
-                || containsAny(event, OPPORTUNITY_KEYWORDS);
+        boolean typeMatched = OPPORTUNITY_EVENT_TYPES.contains(StringUtils.defaultString(event.getEventType()));
+        boolean textMatched = containsAny(event, OPPORTUNITY_KEYWORDS);
+        return textMatched && (typeMatched || hasStrongOpportunitySource(event));
     }
 
     private boolean containsAny(MacroThemeEvent event, Set<String> keywords) {
@@ -189,38 +243,62 @@ public class MacroRealtimePushService {
         return keywords.stream().anyMatch(text::contains);
     }
 
+    private boolean hasStrongRiskSource(MacroThemeEvent event) {
+        String sourceName = StringUtils.defaultString(event.getSourceName());
+        return sourceName.contains("证监")
+                || sourceName.contains("国务院")
+                || sourceName.contains("央行")
+                || sourceName.contains("海关")
+                || sourceName.contains("商务部")
+                || sourceName.contains("发改委");
+    }
+
+    private boolean hasStrongOpportunitySource(MacroThemeEvent event) {
+        String sourceName = StringUtils.defaultString(event.getSourceName());
+        return sourceName.contains("国务院")
+                || sourceName.contains("央行")
+                || sourceName.contains("发改委")
+                || sourceName.contains("工信")
+                || sourceName.contains("财政")
+                || sourceName.contains("中国政府网");
+    }
+
     private String buildMarkdown(MacroThemeEvent event,
                                  MarketSnapshot snapshot,
                                  MacroPushDecision decision,
                                  LocalDateTime now) {
         boolean risk = decision.pushType() == AStockPushType.MACRO_REALTIME_RISK;
         String title = risk
-                ? "# 🚨 宏观系统性风险预警"
-                : "# 🔥 宏观主线催化预警";
+                ? pushLanguageService.text("# 🚨 宏观系统性风险预警", "# 🚨 Macro Systemic Risk Alert")
+                : pushLanguageService.text("# 🔥 宏观主线催化预警", "# 🔥 Macro Theme Catalyst Alert");
         MarketState effectiveState = effectiveMarketState(snapshot);
-        String stateLabel = effectiveState.getLabel();
+        String stateLabel = pushLanguageService.marketStateLabel(effectiveState);
         if (snapshot != null && snapshot.getSnapshotHealth() != null
                 && snapshot.getSnapshotHealth() != MarketSnapshotHealth.LIVE) {
-            stateLabel += "（快照" + snapshot.getSnapshotHealth().getLabel() + "）";
+            stateLabel += pushLanguageService.text("（快照" + snapshot.getSnapshotHealth().getLabel() + "）",
+                    " (Snapshot " + pushLanguageService.snapshotHealthLabel(snapshot.getSnapshotHealth()) + ")");
         }
         String relatedStocks = loadRelatedStocks(event.getId());
         String action = risk
-                ? "优先检查受冲击板块和高弹性后排，避免在系统性利空下逆势加仓。"
-                : "优先关注主线核心与高辨识度龙头，不要把边缘跟风误判成主升。";
-        String source = StringUtils.defaultIfBlank(event.getSourceName(), "宏观快讯");
+                ? pushLanguageService.text("优先检查受冲击板块和高弹性后排，避免在系统性利空下逆势加仓。", "Check the exposed sectors and high-beta laggards first, and avoid adding risk against a systemic bearish catalyst.")
+                : pushLanguageService.text("优先关注主线核心与高辨识度龙头，不要把边缘跟风误判成主升。", "Focus on the core names inside the active theme and the clearest leaders; do not mistake weak followers for primary trend leaders.");
+        String source = StringUtils.defaultIfBlank(event.getSourceName(), pushLanguageService.text("宏观快讯", "Macro Wire"));
         return title + "\n\n"
-                + "> **市场状态**：<font color=\"" + (risk ? "warning" : "info") + "\">" + stateLabel + "</font>\n"
-                + "> **主题**：" + StringUtils.defaultIfBlank(event.getThemeName(), "未知主题")
-                + " | **事件**：" + StringUtils.defaultIfBlank(event.getEventType(), "未知事件")
-                + " | **方向**：" + StringUtils.defaultIfBlank(event.getSignalSide(), "未知")
-                + " | **分数**：" + safeInt(event.getSignalScore()) + "\n"
-                + "> **来源**：" + source + " | **发布时间**：" + formatTime(event.getPubDate()) + "\n"
-                + "> **标题**：" + StringUtils.defaultIfBlank(event.getTitle(), "无标题") + "\n"
-                + "> **摘要**：" + StringUtils.defaultIfBlank(event.getSummary(), "无摘要") + "\n"
-                + "> **关联A股**：" + relatedStocks + "\n"
-                + "> **执行提示**：" + action + "\n"
-                + "> **触发时间**：" + now.format(TIME_FORMATTER) + "\n\n"
-                + "<font color=\"comment\">宏观实时推送只放行高置信度政策、监管、流动性与外部风险事件，用于补足盘中系统性信号。</font>";
+                + "> **" + pushLanguageService.text("市场状态", "Market Regime") + "**：<font color=\"" + (risk ? "warning" : "info") + "\">" + stateLabel + "</font>\n"
+                + "> **" + pushLanguageService.text("主题", "Theme") + "**：" + StringUtils.defaultIfBlank(event.getThemeName(), pushLanguageService.text("未知主题", "Unknown Theme"))
+                + " | **" + pushLanguageService.text("事件", "Event") + "**：" + pushLanguageService.eventType(StringUtils.defaultIfBlank(event.getEventType(), pushLanguageService.text("未知事件", "Unknown Event")))
+                + " | **" + pushLanguageService.text("方向", "Bias") + "**：" + pushLanguageService.signalSideLabel(event.getSignalSide())
+                + " | **" + pushLanguageService.text("分数", "Score") + "**：" + safeInt(event.getSignalScore()) + "\n"
+                + "> **" + pushLanguageService.text("来源", "Source") + "**：" + source + " | **" + pushLanguageService.text("发布时间", "Published At") + "**：" + formatTime(event.getPubDate()) + "\n"
+                + "> **" + pushLanguageService.text("标题", "Title") + "**：" + StringUtils.defaultIfBlank(event.getTitle(), pushLanguageService.text("无标题", "Untitled")) + "\n"
+                + "> **" + pushLanguageService.text("摘要", "Summary") + "**：" + StringUtils.defaultIfBlank(event.getSummary(), pushLanguageService.text("无摘要", "No Summary")) + "\n"
+                + "> **" + pushLanguageService.text("关联A股", "Related Stocks") + "**：" + relatedStocks + "\n"
+                + "> **" + pushLanguageService.text("执行提示", "Action") + "**：" + action + "\n"
+                + "> **" + pushLanguageService.text("触发时间", "Triggered At") + "**：" + now.format(TIME_FORMATTER) + "\n\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("宏观实时推送只放行高置信度政策、监管、流动性与外部风险事件，用于补足盘中系统性信号。",
+                        "Macro realtime alerts only pass through high-confidence policy, regulation, liquidity, and external risk events, and are meant to complement intraday systemic signals.")
+                + "</font>";
     }
 
     private MarketState effectiveMarketState(MarketSnapshot snapshot) {
@@ -248,14 +326,14 @@ public class MacroRealtimePushService {
 
     private String loadRelatedStocks(String eventId) {
         if (StringUtils.isBlank(eventId)) {
-            return "暂无显式映射";
+            return pushLanguageService.text("暂无显式映射", "No explicit mapping");
         }
         List<MacroThemeStockRel> relations = macroThemeStockRelMapper.selectList(new QueryWrapper<MacroThemeStockRel>()
                 .eq("theme_event_id", eventId)
                 .orderByDesc("confidence")
                 .last("LIMIT 3"));
         if (relations == null || relations.isEmpty()) {
-            return "暂无显式映射";
+            return pushLanguageService.text("暂无显式映射", "No explicit mapping");
         }
         return relations.stream()
                 .map(rel -> rel.getStockName() + "(" + rel.getStockCode() + ")")
@@ -270,7 +348,7 @@ public class MacroRealtimePushService {
     }
 
     private String formatTime(LocalDateTime time) {
-        return time == null ? "未知" : time.format(TIME_FORMATTER);
+        return time == null ? pushLanguageService.text("未知", "Unknown") : time.format(TIME_FORMATTER);
     }
 
     private int safeInt(Integer value) {

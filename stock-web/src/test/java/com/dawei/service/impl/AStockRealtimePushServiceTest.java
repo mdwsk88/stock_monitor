@@ -13,6 +13,7 @@ import com.dawei.entity.MarketState;
 import com.dawei.service.AStockPushDecisionLogService;
 import com.dawei.service.MarketStateService;
 import com.dawei.service.AStockPushLogService;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -233,6 +234,54 @@ class AStockRealtimePushServiceTest {
         verify(aStockPushDecisionLogService).recordDecision(captor.capture());
         assertTrue("SKIPPED".equals(captor.getValue().getSendStatus()));
         assertTrue(captor.getValue().getDecisionReason().contains("高潮态仅放行领军核心"));
+    }
+
+    @Test
+    void handleSavedNotice_ShouldBuildEnglishRealtimeCardWhenLanguageSwitchOn() {
+        StockFilterConfig filterConfig = new StockFilterConfig();
+        filterConfig.setARealtimePushCooldownMinutes(120);
+        filterConfig.setARealtimeCriticalThreshold(92);
+        AStockRealtimePushService englishService = new AStockRealtimePushService(
+                aStockPushPolicyService,
+                aStockRealtimeContextService,
+                new AReportOpportunityInsightService(),
+                aStockPushDecisionLogService,
+                aStockPushLogService,
+                marketStateService,
+                weComApi,
+                filterConfig,
+                new PushLanguageService("en")
+        );
+        AStockRss notice = buildNotice();
+        AStockRealtimeContext context = new AStockRealtimeContext(
+                "低空经济",
+                "低空飞行基础设施建设提速",
+                "政策扶持继续加码",
+                90,
+                146,
+                "公告直接命中主线",
+                "EXPLICIT"
+        );
+        MarketSnapshot snapshot = MarketSnapshot.neutral(null, "TEST");
+        snapshot.setMarketState(MarketState.RISK_ON);
+        when(marketStateService.getLatestSnapshot()).thenReturn(snapshot);
+        when(aStockPushPolicyService.classify(any(AStockRss.class), any(), any(MarketSnapshot.class)))
+                .thenReturn(new AStockPushDecision(AStockPushType.REALTIME_OPPORTUNITY, "高分利多白名单事件", false, true));
+        when(aStockPushPolicyService.refineRealtimeDecision(any(), any(), any(), any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.REALTIME_OPPORTUNITY), any())).thenReturn(false);
+        when(aStockRealtimeContextService.buildContext(any(AStockRss.class), any())).thenReturn(context);
+        when(weComApi.formatAStockRealtimeAlert(any(AStockRealtimeAlertCard.class))).thenReturn("formatted-alert");
+
+        boolean pushed = englishService.handleSavedNotice(notice);
+
+        assertTrue(pushed);
+        ArgumentCaptor<AStockRealtimeAlertCard> cardCaptor = ArgumentCaptor.forClass(AStockRealtimeAlertCard.class);
+        verify(weComApi).formatAStockRealtimeAlert(cardCaptor.capture());
+        AStockRealtimeAlertCard card = cardCaptor.getValue();
+        assertTrue("Leading Core".equals(card.getPositionLabel()));
+        assertTrue(card.getTradeHint().contains("main-theme anchor"));
+        assertTrue("Risk-On".equals(card.getMarketStateLabel()));
+        assertTrue("Major Contract".equals(card.getEventType()));
     }
 
     private AStockRss buildNotice() {

@@ -10,6 +10,7 @@ import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
 import com.dawei.service.AISummaryService;
+import com.dawei.utils.PushLanguageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -37,20 +39,27 @@ public class AISummaryServiceImpl implements AISummaryService {
 
     private final ChatClient chatClient;
     private final AStockReportClassifier aStockReportClassifier;
+    private final PushLanguageService pushLanguageService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int A_STOCK_SECTION_LIMIT = 3;
-    private static final String A_MORNING_SCORE_NOTE = "<font color=\"comment\">口径说明：机会榜/风险榜中的“事件评分”按最近24小时窗口内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或其他滚动窗口查询对比，分数可能不同。</font>";
-    private static final String A_EVENING_SCORE_NOTE = "<font color=\"comment\">口径说明：下方“当日热度/事件评分”按今日 09:00-15:00 交易时段内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或最近24小时滚动窗口查询对比，分数可能不同。</font>";
+    private static final Pattern HAN_PATTERN = Pattern.compile("\\p{IsHan}");
 
     public AISummaryServiceImpl(ChatClient chatClient) {
-        this(chatClient, new AStockReportClassifier());
+        this(chatClient, new AStockReportClassifier(), new PushLanguageService());
+    }
+
+    public AISummaryServiceImpl(ChatClient chatClient, AStockReportClassifier aStockReportClassifier) {
+        this(chatClient, aStockReportClassifier, new PushLanguageService());
     }
 
     @Autowired
-    public AISummaryServiceImpl(ChatClient chatClient, AStockReportClassifier aStockReportClassifier) {
+    public AISummaryServiceImpl(ChatClient chatClient,
+                                AStockReportClassifier aStockReportClassifier,
+                                PushLanguageService pushLanguageService) {
         this.chatClient = chatClient;
         this.aStockReportClassifier = aStockReportClassifier;
+        this.pushLanguageService = pushLanguageService;
     }
 
     // 美股总结提示词模板
@@ -451,6 +460,164 @@ public class AISummaryServiceImpl implements AISummaryService {
         【请生成报告】
         """;
 
+    private static final String A_MORNING_REPORT_PROMPT_EN = """
+        [Role]
+        You are an A-stock event-driven strategist writing a professional WeCom pre-market note.
+        Your job is not to repeat notice headlines. Your job is to explain the catalysts that can change trading expectations before the open.
+
+        [Task]
+        Use the A-stock event data below to produce a market note in English.
+
+        [Input]
+        Report date: {reportDate}
+        Window: latest 24 hours
+        Source: Eastmoney notice feed (noise filtered, event-clustered, rule-scored)
+
+        Market state snapshot:
+        {marketContext}
+
+        Macro theme data:
+        {macroThemeData}
+
+        Resonance data:
+        {resonanceData}
+
+        Stock event data:
+        {stockData}
+
+        [Rules]
+        1. Read the market snapshot first.
+           - Defensive: do not encourage blind chasing; only keep truly resilient or high-conviction setups.
+           - Risk-On: prioritize leaders and catalysts that can pull the theme forward.
+           - Overheat: keep strong leaders if necessary, but explicitly warn about crowded laggards and next-day fade risk.
+        2. Focus only on events with real trading value: earnings surprise, major contracts, winning bids, M&A, product approval, buybacks, insider increases, investigations, litigation, penalties, delisting risk, or clear macro/liquidity shifts.
+        3. Ignore routine governance, meetings, wealth-management products, fundraising housekeeping, and other administrative noise.
+        4. Output sections in this exact order:
+           - ## Macro Themes
+           - ## Resonance Picks
+           - ## Opportunity Board
+           - ## Risk Board
+        5. If a section has no valid candidates, use the exact English empty-state text below:
+           - <font color="comment">No macro theme met the threshold</font>
+           - <font color="comment">No notice-theme resonance pick met the threshold</font>
+           - <font color="comment">No opportunity event met the threshold</font>
+           - <font color="comment">No high-priority risk event was detected</font>
+        6. The final markdown must be fully in English. Do not leave Chinese narrative, Chinese labels, Chinese disclaimers, or Chinese calls to action in the final output.
+        7. Company names and stock codes may remain unchanged, but your analysis, source-title paraphrases, and framing must be English.
+        8. Translate the meaning of Chinese source headlines into English when you reference them in the report.
+        9. Only output final markdown.
+
+        [Format]
+        - Title: # 🌅 A-Stock Pre-Market Alert Radar | {reportDate}
+        - Opening paragraph: Over the last 24 hours, the system completed notice de-noising, event clustering, macro-theme aggregation, and risk routing. These are the main themes, resonance picks, opportunities, and risks worth watching before the open:
+        - Macro theme item:
+          > 1. Theme Name | Event Type
+          > 🧭 Direction: <font color="success/info/warning/comment">[Bullish/Bearish/Neutral]</font>
+          > 🎯 Theme Strength: <font color="warning/info/success/comment">score points (tier, associated with N mapped stocks)</font>
+          > 🧠 Interpretation: [policy/industry impact] + [how capital may trade it]
+        - Resonance item:
+          > 1. Company (Code) | Macro Theme
+          > 🔗 Resonance Score: <font color="warning/info/success/comment">score points (Strong/High/Mild Resonance)</font>
+          > 🏷️ Positioning: <font color="warning/info/comment">[Leading Core/High-Beta Follower/Watchlist]</font>
+          > 🧠 Resonance Logic: [notice catalyst] + [why the macro theme amplifies it]
+        - Opportunity item:
+          > 1. Company (Code) | 🇨🇳 Stock
+          > 📈 Event View: <font color="warning/info/comment">[Strong Bullish/Cautiously Bullish/Neutral]</font>
+          > 🏷️ Positioning: <font color="warning/info/comment">[Leading Core/High-Beta Follower/Watchlist]</font>
+          > 🎯 Event Score: <font color="warning/info/success/comment">score points (tier, X event clusters / Y supporting notices)</font>
+          > 🧠 Core Setup: [business/financial impact] + [how capital may trade it]
+        - Risk item:
+          > 1. Company (Code) | 🇨🇳 Stock
+          > ⚠️ Event View: <font color="warning/comment">[Bearish Alert/Neutral]</font>
+          > 🎯 Event Score: <font color="warning/info/success/comment">score points (tier, X event clusters / Y supporting notices)</font>
+          > 🧠 Risk Focus: [where the risk sits] + [how the market is likely to price or avoid it]
+        - Use only these score tiers:
+          - >=110: Main-Theme Tier
+          - 80-109: High Priority
+          - 60-79: Marginal Catalyst
+        - Use only these position labels:
+          - Leading Core
+          - High-Beta Follower
+          - Watchlist
+
+        [Generate the report]
+        """;
+
+    private static final String A_EVENING_REPORT_PROMPT_EN = """
+        [Role]
+        You are a senior A-stock post-close strategist. Your job is to explain why the tape moved the way it did today, not to predict tomorrow.
+
+        [Task]
+        Use the A-stock intraday event data below to produce a post-close markdown report in English.
+
+        [Input]
+        Report date: {reportDate}
+        Window: intraday 09:00-15:00
+        Source: Eastmoney notice feed (noise filtered, event-clustered, rule-scored)
+
+        Market state snapshot:
+        {marketContext}
+
+        Macro theme data:
+        {macroThemeData}
+
+        Resonance data:
+        {resonanceData}
+
+        Stock event data:
+        {stockData}
+
+        [Rules]
+        1. Read the market snapshot first.
+           - Defensive: emphasize risk propagation and defensive signals.
+           - Risk-On: identify leaders versus followers.
+           - Overheat: explicitly warn about crowding, failed limit-ups, and laggards dropping out.
+        2. Explain today's price-action logic. Do not merely restate notice headlines.
+        3. Output sections in this exact order:
+           - ## Macro Themes
+           - ## Resonance Picks
+           - ## Opportunity Board
+           - ## Risk Board
+        4. If a section has no valid candidates, use the exact English empty-state text below:
+           - <font color="comment">No macro theme met the threshold</font>
+           - <font color="comment">No notice-theme resonance pick met the threshold</font>
+           - <font color="comment">No opportunity event met the threshold</font>
+           - <font color="comment">No high-priority risk event was detected</font>
+        5. The final markdown must be fully in English. Do not leave Chinese narrative, Chinese labels, Chinese disclaimers, or Chinese calls to action in the final output.
+        6. Company names and stock codes may remain unchanged, but your analysis, source-title paraphrases, and framing must be English.
+        7. Translate the meaning of Chinese source headlines into English when you reference them in the report.
+        8. Only output final markdown.
+
+        [Format]
+        - Title: # 🌆 A-Stock Post-Close Decode | {reportDate}
+        - Opening paragraph: The A-stock market has closed. The system reviewed intraday notices from 09:00 to 15:00 and overlaid macro themes to split the tape into opportunity, risk, and resonance tracks:
+        - Macro theme item:
+          > 1. Theme Name | Event Type
+          > 🧭 Direction: <font color="success/info/warning/comment">[Bullish/Bearish/Neutral]</font>
+          > 🎯 Theme Strength: <font color="warning/info/success/comment">score points (tier, associated with N mapped stocks)</font>
+          > 🧠 Interpretation: [how the theme affected today's tape]
+        - Resonance item:
+          > 1. Company (Code) | Macro Theme
+          > 🔗 Resonance Score: <font color="warning/info/success/comment">score points (Strong/High/Mild Resonance)</font>
+          > 🏷️ Positioning: <font color="warning/info/comment">[Leading Core/High-Beta Follower/Watchlist]</font>
+          > 🧠 Resonance Decode: [how notice + macro theme reinforced today's move]
+        - Opportunity item:
+          > 1. Company (Code) | 🇨🇳 Stock
+          > 🏷️ Positioning: <font color="warning/info/comment">[Leading Core/High-Beta Follower/Watchlist]</font>
+          > 🔥 Session Heat: <font color="warning/info/success/comment">tier (Event score X points, Y event clusters / Z supporting notices)</font>
+          > 🧠 Price Action Decode: [why the name strengthened or held up today]
+        - Risk item:
+          > 1. Company (Code) | 🇨🇳 Stock
+          > 📉 Session Heat: <font color="warning/info/success/comment">tier (Event score X points, Y event clusters / Z supporting notices)</font>
+          > 🧠 Risk Focus: [why the market priced the risk the way it did today]
+        - Use only these tiers:
+          - >=110: Main-Theme Tier
+          - 80-109: High Priority
+          - 60-79: Marginal Catalyst
+
+        [Generate the report]
+        """;
+
     // 美股夜报（盘前预警）Markdown 生成提示词（晚间模板）
     private static final String US_EVENING_REPORT_PROMPT = """
         【角色设定】
@@ -565,11 +732,11 @@ public class AISummaryServiceImpl implements AISummaryService {
     @Override
     public String summarizeUSStocks(List<USStockRss> stockList) {
         if (stockList == null || stockList.isEmpty()) {
-            return "过去24小时内暂无美股异动数据。";
+            return pushLanguageService.text("过去24小时内暂无美股异动数据。", "No unusual US stock activity was detected in the last 24 hours.");
         }
 
         String stockData = formatUSStockData(stockList);
-        String prompt = US_STOCK_SUMMARY_PROMPT.replace("{stockData}", stockData);
+        String prompt = withLanguageInstruction(US_STOCK_SUMMARY_PROMPT.replace("{stockData}", stockData));
 
         try {
             log.info("开始调用AI总结美股数据，共 {} 只股票", stockList.size());
@@ -580,18 +747,18 @@ public class AISummaryServiceImpl implements AISummaryService {
             return summary;
         } catch (Exception e) {
             log.error("AI总结美股数据失败: {}", e.getMessage(), e);
-            return generateFallbackSummary(stockList, "美股");
+            return generateFallbackSummary(stockList, pushLanguageService.text("美股", "US stocks"));
         }
     }
 
     @Override
     public String summarizeAStocks(List<AStockRss> stockList) {
         if (stockList == null || stockList.isEmpty()) {
-            return "过去24小时内暂无A股异动数据。";
+            return pushLanguageService.text("过去24小时内暂无A股异动数据。", "No unusual A-stock activity was detected in the last 24 hours.");
         }
 
         String stockData = formatAStockData(stockList);
-        String prompt = A_STOCK_SUMMARY_PROMPT.replace("{stockData}", stockData);
+        String prompt = withLanguageInstruction(A_STOCK_SUMMARY_PROMPT.replace("{stockData}", stockData));
 
         try {
             log.info("开始调用AI总结A股数据，共 {} 只股票", stockList.size());
@@ -613,9 +780,9 @@ public class AISummaryServiceImpl implements AISummaryService {
         }
 
         String stockData = formatUSStockAlertData(stockAlertList);
-        String prompt = US_MORNING_REPORT_PROMPT
+        String prompt = withLanguageInstruction(US_MORNING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
-                .replace("{stockData}", stockData);
+                .replace("{stockData}", stockData));
 
         try {
             log.info("开始生成美股盘前早报 Markdown，日期: {}，共 {} 只股票", reportDate, stockAlertList.size());
@@ -642,7 +809,7 @@ public class AISummaryServiceImpl implements AISummaryService {
     @Override
     public String generateAMorningReportMarkdown(AReportFusionContext reportContext, String reportDate) {
         if (reportContext == null || reportContext.isEmpty()) {
-            return buildNoDataMarkdown(reportDate, "A股");
+            return buildNoDataMarkdown(reportDate, pushLanguageService.text("A股", "A-stocks"));
         }
 
         String marketContext = formatMarketContext(reportContext.getMarketSnapshot());
@@ -653,12 +820,12 @@ public class AISummaryServiceImpl implements AISummaryService {
         );
         String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
         String resonanceData = formatResonanceData(reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights());
-        String prompt = A_MORNING_REPORT_PROMPT
+        String prompt = withLanguageInstruction(resolveAMorningReportPrompt()
                 .replace("{reportDate}", reportDate)
                 .replace("{marketContext}", marketContext)
                 .replace("{macroThemeData}", macroThemeData)
                 .replace("{resonanceData}", resonanceData)
-                .replace("{stockData}", stockData);
+                .replace("{stockData}", stockData));
 
         try {
             log.info("开始生成A股盘前早报 Markdown，日期: {}，机会={}，风险={}，宏观主题={}，共振={}",
@@ -670,6 +837,12 @@ public class AISummaryServiceImpl implements AISummaryService {
             String markdown = chatClient.prompt(new Prompt(prompt))
                     .call()
                     .content();
+            if (pushLanguageService.isEnglish() && containsChineseCharacters(markdown)) {
+                log.warn("A股盘前早报英文模式仍包含中文，使用更严格的英文模板重试一次");
+                markdown = chatClient.prompt(new Prompt(buildStrictEnglishRetryPrompt(prompt, reportDate, true)))
+                        .call()
+                        .content();
+            }
             log.info("A股盘前早报 Markdown 生成完成");
             return ensureAStockMarkdown(markdown, reportContext, reportDate, true);
         } catch (Exception e) {
@@ -701,12 +874,12 @@ public class AISummaryServiceImpl implements AISummaryService {
         );
         String macroThemeData = formatMacroThemeData(reportContext.getMacroThemes());
         String resonanceData = formatResonanceData(reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights());
-        String prompt = A_EVENING_REPORT_PROMPT
+        String prompt = withLanguageInstruction(resolveAEveningReportPrompt()
                 .replace("{reportDate}", reportDate)
                 .replace("{marketContext}", marketContext)
                 .replace("{macroThemeData}", macroThemeData)
                 .replace("{resonanceData}", resonanceData)
-                .replace("{stockData}", stockData);
+                .replace("{stockData}", stockData));
 
         try {
             log.info("开始生成A股盘后复盘 Markdown，日期: {}，机会={}，风险={}，宏观主题={}，共振={}",
@@ -718,6 +891,12 @@ public class AISummaryServiceImpl implements AISummaryService {
             String markdown = chatClient.prompt(new Prompt(prompt))
                     .call()
                     .content();
+            if (pushLanguageService.isEnglish() && containsChineseCharacters(markdown)) {
+                log.warn("A股盘后复盘英文模式仍包含中文，使用更严格的英文模板重试一次");
+                markdown = chatClient.prompt(new Prompt(buildStrictEnglishRetryPrompt(prompt, reportDate, false)))
+                        .call()
+                        .content();
+            }
             log.info("A股盘后复盘 Markdown 生成完成");
             return ensureAStockMarkdown(markdown, reportContext, reportDate, false);
         } catch (Exception e) {
@@ -729,13 +908,13 @@ public class AISummaryServiceImpl implements AISummaryService {
     @Override
     public String generateUSEveningReportMarkdown(List<StockAlertDTO<USStockRss>> stockAlertList, String reportDate) {
         if (stockAlertList == null || stockAlertList.isEmpty()) {
-            return buildNoDataMarkdown(reportDate, "美股");
+            return buildNoDataMarkdown(reportDate, pushLanguageService.text("美股", "US stocks"));
         }
 
         String stockData = formatUSStockAlertData(stockAlertList);
-        String prompt = US_EVENING_REPORT_PROMPT
+        String prompt = withLanguageInstruction(US_EVENING_REPORT_PROMPT
                 .replace("{reportDate}", reportDate)
-                .replace("{stockData}", stockData);
+                .replace("{stockData}", stockData));
 
         try {
             log.info("开始生成美股夜报 Markdown，日期: {}，共 {} 只股票", reportDate, stockAlertList.size());
@@ -757,9 +936,9 @@ public class AISummaryServiceImpl implements AISummaryService {
         }
 
         String stockData = formatUSStockAlertData(stockAlertList);
-        String prompt = US_OVERNIGHT_RECAP_PROMPT
+        String prompt = withLanguageInstruction(US_OVERNIGHT_RECAP_PROMPT
                 .replace("{reportDate}", reportDate)
-                .replace("{stockData}", stockData);
+                .replace("{stockData}", stockData));
 
         try {
             log.info("开始生成美股早报（隔夜复盘）Markdown，日期: {}，共 {} 只股票", reportDate, stockAlertList.size());
@@ -782,10 +961,10 @@ public class AISummaryServiceImpl implements AISummaryService {
         for (int i = 0; i < stockList.size(); i++) {
             USStockRss stock = stockList.get(i);
             sb.append(i + 1).append(". ").append(stock.getStockCode()).append("\n");
-            sb.append("   标题(英): ").append(stock.getTitle()).append("\n");
-            sb.append("   标题(中): ").append(stock.getTitleZh() != null ? stock.getTitleZh() : "N/A").append("\n");
-            sb.append("   标签: ").append(stock.getTags() != null ? stock.getTags() : "N/A").append("\n");
-            sb.append("   时间: ").append(stock.getPubDateBj() != null ? stock.getPubDateBj().format(DATE_FORMATTER) : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("标题(英)", "title_en")).append(": ").append(stock.getTitle()).append("\n");
+            sb.append("   ").append(pushLanguageService.text("标题(中)", "title_zh")).append(": ").append(stock.getTitleZh() != null ? stock.getTitleZh() : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("标签", "tags")).append(": ").append(stock.getTags() != null ? stock.getTags() : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("时间", "time")).append(": ").append(stock.getPubDateBj() != null ? stock.getPubDateBj().format(DATE_FORMATTER) : "N/A").append("\n");
             sb.append("\n");
         }
         return sb.toString();
@@ -802,11 +981,11 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("stock_code: ").append(stock.getStockCode()).append("\n");
             sb.append("stock_name: ").append(stock.getStockName() != null ? stock.getStockName() : stock.getStockCode()).append("\n");
             sb.append("signal_score: ").append(stock.getSignalScore() != null ? stock.getSignalScore() : 0).append("\n");
-            sb.append("signal_side: ").append(stock.getSignalSide() != null ? stock.getSignalSide() : "中性").append("\n");
-            sb.append("event_type: ").append(stock.getEventType() != null ? stock.getEventType() : "常规事项").append("\n");
+            sb.append("signal_side: ").append(pushLanguageService.signalSideLabel(stock.getSignalSide() != null ? stock.getSignalSide() : pushLanguageService.text("中性", "Neutral"))).append("\n");
+            sb.append("event_type: ").append(pushLanguageService.eventType(stock.getEventType() != null ? stock.getEventType() : pushLanguageService.text("常规事项", "Routine"))).append("\n");
             sb.append("latest_notice_title: ").append(stock.getTitle() != null ? stock.getTitle() : "N/A").append("\n");
             sb.append("tags: ").append(stock.getTag() != null ? stock.getTag() : "N/A").append("\n");
-            sb.append("analysis_hint: ").append(stock.getAnalysisHint() != null ? stock.getAnalysisHint() : "请优先判断是否存在实质性预期差").append("\n");
+            sb.append("analysis_hint: ").append(stock.getAnalysisHint() != null ? stock.getAnalysisHint() : pushLanguageService.text("请优先判断是否存在实质性预期差", "Please judge whether the notice creates a real expectation gap first")).append("\n");
             sb.append("cluster_highlights:\n").append(indentMultiline(stock.getClusterHighlights() != null ? stock.getClusterHighlights() : "N/A", "  - ")).append("\n");
             sb.append("time: ").append(stock.getPubDate() != null ? stock.getPubDate().format(DATE_FORMATTER) : "N/A").append("\n");
             sb.append("\n");
@@ -823,13 +1002,13 @@ public class AISummaryServiceImpl implements AISummaryService {
             StockAlertDTO<USStockRss> dto = stockAlertList.get(i);
             USStockRss stock = dto.getStock();
             sb.append(i + 1).append(". ").append(stock.getStockCode()).append("\n");
-            sb.append("   名称: ").append(stock.getStockCode()).append("\n");
-            sb.append("   异动频次: ").append(dto.getFrequency()).append(" 次\n");
-            sb.append("   活跃度: ").append(dto.getActivityLevel()).append("\n");
-            sb.append("   颜色标签: ").append(dto.getColorTag()).append("\n");
-            sb.append("   最新标题(英): ").append(stock.getTitle() != null ? stock.getTitle() : "N/A").append("\n");
-            sb.append("   最新标题(中): ").append(stock.getTitleZh() != null ? stock.getTitleZh() : "N/A").append("\n");
-            sb.append("   所有相关标题(供提炼催化剂): ").append(stock.getTags() != null ? stock.getTags() : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("名称", "name")).append(": ").append(stock.getStockCode()).append("\n");
+            sb.append("   ").append(pushLanguageService.text("异动频次", "mention_frequency")).append(": ").append(dto.getFrequency()).append(pushLanguageService.text(" 次", "")).append("\n");
+            sb.append("   ").append(pushLanguageService.text("活跃度", "activity_level")).append(": ").append(pushLanguageService.activityLevel(dto.getFrequency())).append("\n");
+            sb.append("   ").append(pushLanguageService.text("颜色标签", "color_tag")).append(": ").append(dto.getColorTag()).append("\n");
+            sb.append("   ").append(pushLanguageService.text("最新标题(英)", "latest_title_en")).append(": ").append(stock.getTitle() != null ? stock.getTitle() : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("最新标题(中)", "latest_title_zh")).append(": ").append(stock.getTitleZh() != null ? stock.getTitleZh() : "N/A").append("\n");
+            sb.append("   ").append(pushLanguageService.text("所有相关标题(供提炼催化剂)", "related_titles_for_catalyst")).append(": ").append(stock.getTags() != null ? stock.getTags() : "N/A").append("\n");
             sb.append("\n");
         }
         return sb.toString();
@@ -865,19 +1044,19 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("stock_code: ").append(stock.getStockCode()).append("\n");
             sb.append("stock_name: ").append(stock.getStockName() != null ? stock.getStockName() : stock.getStockCode()).append("\n");
             sb.append("signal_score: ").append(dto.getSignalScore()).append("\n");
-            sb.append("signal_level: ").append(dto.getSignalLevel()).append("\n");
-            sb.append("signal_side: ").append(dto.getSignalSide()).append("\n");
+            sb.append("signal_level: ").append(pushLanguageService.signalLevel(dto.getSignalScore())).append("\n");
+            sb.append("signal_side: ").append(pushLanguageService.signalSideLabel(dto.getSignalSide())).append("\n");
             sb.append("event_cluster_count: ").append(dto.getEventCount()).append("\n");
             sb.append("support_notice_count: ").append(dto.getFrequency()).append("\n");
-            sb.append("event_type: ").append(stock.getEventType() != null ? stock.getEventType() : "N/A").append("\n");
+            sb.append("event_type: ").append(pushLanguageService.eventType(stock.getEventType() != null ? stock.getEventType() : "N/A")).append("\n");
             sb.append("color_tag: ").append(dto.getSignalColorTag()).append("\n");
             sb.append("analysis_hint: ").append(stock.getAnalysisHint() != null ? stock.getAnalysisHint() : "N/A").append("\n");
             if (opportunitySection) {
                 AReportOpportunityInsight insight = insightByCode.get(stock.getStockCode());
                 if (insight != null) {
-                    sb.append("position_label: ").append(insight.getPositionLabel()).append("\n");
-                    sb.append("position_reason: ").append(insight.getPositionReason()).append("\n");
-                    sb.append("trade_hint: ").append(insight.getTradeHint()).append("\n");
+                    sb.append("position_label: ").append(pushLanguageService.positionLabel(insight.getPositionLabel())).append("\n");
+                    sb.append("position_reason: ").append(pushLanguageService.translatePositionReason(insight.getPositionReason())).append("\n");
+                    sb.append("trade_hint: ").append(pushLanguageService.translateTradeHint(insight.getTradeHint())).append("\n");
                     sb.append("conviction_score: ").append(insight.getConvictionScore()).append("\n");
                     sb.append("resonance_supported: ").append(insight.isResonanceSupported()).append("\n");
                 }
@@ -907,29 +1086,31 @@ public class AISummaryServiceImpl implements AISummaryService {
     private String formatMarketContext(MarketSnapshot snapshot) {
         StringBuilder sb = new StringBuilder("## MarketContext\n");
         if (snapshot == null) {
-            sb.append("market_state: 中性\n")
-                    .append("market_interpretation: 暂无盘中市场快照，按照中性环境处理\n\n");
+            sb.append("market_state: ").append(pushLanguageService.marketStateLabel(MarketState.NEUTRAL)).append("\n")
+                    .append("market_interpretation: ").append(resolveMarketInterpretation(null)).append("\n\n");
             return sb.toString();
         }
         sb.append("market_state: ")
-                .append(snapshot.getMarketState() != null ? snapshot.getMarketState().getLabel() : MarketState.NEUTRAL.getLabel())
+                .append(snapshot.getMarketState() != null
+                        ? pushLanguageService.marketStateLabel(snapshot.getMarketState())
+                        : pushLanguageService.marketStateLabel(MarketState.NEUTRAL))
                 .append("\n");
         sb.append("captured_at: ")
                 .append(snapshot.getCapturedAt() != null ? snapshot.getCapturedAt().format(DATE_FORMATTER) : "N/A")
                 .append("\n");
-        sb.append("index_change: 上证 ")
+        sb.append("index_change: ").append(pushLanguageService.text("上证 ", "SSE "))
                 .append(formatPct(snapshot.getShChangePct()))
-                .append(" | 深成指 ")
+                .append(" | ").append(pushLanguageService.text("深成指 ", "SZSE "))
                 .append(formatPct(snapshot.getSzChangePct()))
-                .append(" | 创业板 ")
+                .append(" | ").append(pushLanguageService.text("创业板 ", "ChiNext "))
                 .append(formatPct(snapshot.getCybChangePct()))
                 .append("\n");
-        sb.append("breadth: 上涨 ").append(Math.max(0, snapshot.getUpCount()))
-                .append(" | 下跌 ").append(Math.max(0, snapshot.getDownCount()))
-                .append(" | 平盘 ").append(Math.max(0, snapshot.getFlatCount()))
+        sb.append("breadth: ").append(pushLanguageService.text("上涨 ", "Advancers ")).append(Math.max(0, snapshot.getUpCount()))
+                .append(" | ").append(pushLanguageService.text("下跌 ", "Decliners ")).append(Math.max(0, snapshot.getDownCount()))
+                .append(" | ").append(pushLanguageService.text("平盘 ", "Unchanged ")).append(Math.max(0, snapshot.getFlatCount()))
                 .append("\n");
-        sb.append("limit_status: 涨停 ").append(Math.max(0, snapshot.getLimitUpCount()))
-                .append(" | 跌停 ").append(Math.max(0, snapshot.getLimitDownCount()))
+        sb.append("limit_status: ").append(pushLanguageService.text("涨停 ", "Limit-Up ")).append(Math.max(0, snapshot.getLimitUpCount()))
+                .append(" | ").append(pushLanguageService.text("跌停 ", "Limit-Down ")).append(Math.max(0, snapshot.getLimitDownCount()))
                 .append("\n");
         sb.append("market_interpretation: ").append(resolveMarketInterpretation(snapshot)).append("\n\n");
         return sb.toString();
@@ -946,8 +1127,8 @@ public class AISummaryServiceImpl implements AISummaryService {
             MacroThemeEvent theme = macroThemes.get(i);
             sb.append("### ThemeCard ").append(i + 1).append("\n");
             sb.append("theme_name: ").append(theme.getThemeName()).append("\n");
-            sb.append("event_type: ").append(theme.getEventType()).append("\n");
-            sb.append("signal_side: ").append(theme.getSignalSide()).append("\n");
+            sb.append("event_type: ").append(pushLanguageService.eventType(theme.getEventType())).append("\n");
+            sb.append("signal_side: ").append(pushLanguageService.signalSideLabel(theme.getSignalSide())).append("\n");
             sb.append("signal_score: ").append(theme.getSignalScore()).append("\n");
             sb.append("importance_level: ").append(theme.getImportanceLevel() != null ? theme.getImportanceLevel() : 0).append("\n");
             sb.append("mapped_stock_count: ").append(theme.getMappedStockCount() != null ? theme.getMappedStockCount() : 0).append("\n");
@@ -974,22 +1155,22 @@ public class AISummaryServiceImpl implements AISummaryService {
             sb.append("### ResonanceCard ").append(i + 1).append("\n");
             sb.append("stock_code: ").append(card.getStockCode()).append("\n");
             sb.append("stock_name: ").append(card.getStockName()).append("\n");
-            sb.append("signal_side: ").append(card.getSignalSide()).append("\n");
+            sb.append("signal_side: ").append(pushLanguageService.signalSideLabel(card.getSignalSide())).append("\n");
             sb.append("fusion_score: ").append(card.getFusionScore()).append("\n");
-            sb.append("fusion_level: ").append(card.getFusionLevel()).append("\n");
+            sb.append("fusion_level: ").append(pushLanguageService.fusionLevel(safeInt(card.getFusionScore()))).append("\n");
             sb.append("notice_signal_score: ").append(card.getNoticeSignalScore()).append("\n");
             sb.append("macro_signal_score: ").append(card.getMacroSignalScore()).append("\n");
             sb.append("event_cluster_count: ").append(card.getEventClusterCount()).append("\n");
             sb.append("support_notice_count: ").append(card.getSupportNoticeCount()).append("\n");
             sb.append("macro_theme_name: ").append(card.getMacroThemeName() != null ? card.getMacroThemeName() : "N/A").append("\n");
-            sb.append("macro_event_type: ").append(card.getMacroEventType() != null ? card.getMacroEventType() : "N/A").append("\n");
-            sb.append("notice_event_type: ").append(card.getNoticeEventType() != null ? card.getNoticeEventType() : "N/A").append("\n");
+            sb.append("macro_event_type: ").append(pushLanguageService.eventType(card.getMacroEventType() != null ? card.getMacroEventType() : "N/A")).append("\n");
+            sb.append("notice_event_type: ").append(pushLanguageService.eventType(card.getNoticeEventType() != null ? card.getNoticeEventType() : "N/A")).append("\n");
             AReportOpportunityInsight insight = insightByCode.get(card.getStockCode());
             if (insight != null) {
-                sb.append("position_label: ").append(insight.getPositionLabel()).append("\n");
-                sb.append("position_reason: ").append(insight.getPositionReason()).append("\n");
+                sb.append("position_label: ").append(pushLanguageService.positionLabel(insight.getPositionLabel())).append("\n");
+                sb.append("position_reason: ").append(pushLanguageService.translatePositionReason(insight.getPositionReason())).append("\n");
             }
-            sb.append("relation_reason: ").append(card.getRelationReason() != null ? card.getRelationReason() : "N/A").append("\n");
+            sb.append("relation_reason: ").append(card.getRelationReason() != null ? pushLanguageService.translateRelationReason(card.getRelationReason()) : "N/A").append("\n");
             sb.append("notice_title: ").append(card.getNoticeTitle() != null ? card.getNoticeTitle() : "N/A").append("\n");
             sb.append("macro_title: ").append(card.getMacroTitle() != null ? card.getMacroTitle() : "N/A").append("\n");
             sb.append("macro_summary: ").append(card.getMacroSummary() != null ? card.getMacroSummary() : "N/A").append("\n");
@@ -1004,11 +1185,15 @@ public class AISummaryServiceImpl implements AISummaryService {
      */
     private String generateFallbackSummary(List<USStockRss> stockList, String marketType) {
         StringBuilder sb = new StringBuilder();
-        sb.append("过去24小时内").append(marketType).append("异动TOP5：\n\n");
+        sb.append(pushLanguageService.text("过去24小时内", "Top moves in the last 24 hours for "))
+                .append(marketType)
+                .append(pushLanguageService.text("异动TOP5：\n\n", ":\n\n"));
         for (int i = 0; i < stockList.size(); i++) {
             USStockRss stock = stockList.get(i);
             sb.append(i + 1).append(". **").append(stock.getStockCode()).append("**");
-            sb.append(" - ").append(stock.getTitleZh() != null ? stock.getTitleZh() : stock.getTitle());
+            sb.append(" - ").append(pushLanguageService.isEnglish()
+                    ? defaultText(stock.getTitle(), stock.getTitleZh())
+                    : defaultText(stock.getTitleZh(), stock.getTitle()));
             sb.append("\n");
         }
         return sb.toString();
@@ -1019,14 +1204,14 @@ public class AISummaryServiceImpl implements AISummaryService {
      */
     private String generateFallbackSummaryA(List<AStockRss> stockList) {
         StringBuilder sb = new StringBuilder();
-        sb.append("过去24小时内A股核心事件TOP5：\n\n");
+        sb.append(pushLanguageService.text("过去24小时内A股核心事件TOP5：\n\n", "Top A-stock event cards in the last 24 hours:\n\n"));
         for (int i = 0; i < stockList.size(); i++) {
             AStockRss stock = stockList.get(i);
             sb.append(i + 1).append(". **").append(stock.getStockCode()).append("** (").append(stock.getStockName()).append(")");
             sb.append(" - ").append(stock.getTitle());
-            sb.append("【").append(stock.getEventType() != null ? stock.getEventType() : stock.getTag()).append(" / ");
-            sb.append(stock.getSignalSide() != null ? stock.getSignalSide() : "中性").append(" / ");
-            sb.append(stock.getSignalScore() != null ? stock.getSignalScore() : 0).append("分】");
+            sb.append("【").append(pushLanguageService.eventType(stock.getEventType() != null ? stock.getEventType() : stock.getTag())).append(" / ");
+            sb.append(pushLanguageService.signalSideLabel(stock.getSignalSide() != null ? stock.getSignalSide() : pushLanguageService.text("中性", "Neutral"))).append(" / ");
+            sb.append(stock.getSignalScore() != null ? stock.getSignalScore() : 0).append(pushLanguageService.text("分", "")).append("】");
             sb.append("\n");
         }
         return sb.toString();
@@ -1036,43 +1221,59 @@ public class AISummaryServiceImpl implements AISummaryService {
      * 构建无数据时的 Markdown 消息
      */
     private String buildNoDataMarkdown(String reportDate, String market) {
-        String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
-        String thresholdDesc = market.equals("A股")
-                ? "（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）"
-                : "（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）";
-        return "# 🌅 AI 盘前异动雷达 | " + reportDate + "\n\n" +
-               "过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无" + market + "异动数据</font>\n" +
-               "<font color=\"comment\">" + thresholdDesc + "</font>\n\n" +
-               "💡 AI 深度查股：\n" +
-               "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        boolean usMarket = "美股".equals(market) || "US stocks".equals(market);
+        String botName = "@" + (usMarket ? pushLanguageService.botNameForUS() : pushLanguageService.botNameForA());
+        String title = usMarket
+                ? pushLanguageService.text("# 🌅 AI 盘前异动雷达 | ", "# 🌅 AI Pre-Market Alert Radar | ")
+                : pushLanguageService.text("# 🌅 AI 盘前异动雷达 | ", "# 🌅 A-Stock Pre-Market Alert Radar | ");
+        String thresholdDesc = usMarket
+                ? pushLanguageService.text("（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 mentions for the same ticker in 24h; quality over quantity.)")
+                : pushLanguageService.text("（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）",
+                "(Current threshold: event score >= 60, with governance/wealth-management/meeting noise already filtered out.)");
+        return title + reportDate + "\n\n"
+                + pushLanguageService.text("过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n",
+                "In the last 24 hours, the system scanned public financial information sources after filtering administrative noise.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无" + market + "异动数据",
+                "⚠️ No notable " + market + " alerts were detected")
+                + "</font>\n"
+                + "<font color=\"comment\">" + thresholdDesc + "</font>\n\n"
+                + pushLanguageService.text("💡 AI 深度查股：\n想看具体股票分析？请在群内直接发送：", "💡 AI Deep Dive:\nTo analyze a specific stock, send: ")
+                + botName
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.")
+                + "</font>";
     }
 
     private String buildAStockNoDataEveningMarkdown(String reportDate) {
-        return "# 🌆 A股盘后情绪解码 | " + reportDate + "\n\n" +
-               "今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无 🇨🇳 A股需要解码的盘后事件</font>\n" +
-               "<font color=\"comment\">（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）</font>\n\n" +
-               "💡 持仓深度体检：\n" +
-               "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
-               "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌆 A股盘后情绪解码 | ", "# 🌆 A-Stock Post-Close Decode | ") + reportDate + "\n\n"
+                + pushLanguageService.text("今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线。\n\n",
+                "The A-stock market has closed. The system reviewed intraday notices from 09:00 to 15:00 and separated them into opportunity and risk tracks.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无 🇨🇳 A股需要解码的盘后事件", "⚠️ No post-close A-stock events met the decoding threshold")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）",
+                "(Current threshold: event score >= 60, with governance/wealth-management/meeting noise already filtered out.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 持仓深度体检：\n今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n👉 请在群内直接发送：@",
+                "💡 Position Check:\nIf today's tape was confusing, ask whether a hidden risk hit one of your holdings:\n👉 Send @")
+                + pushLanguageService.botNameForA()
+                + pushLanguageService.text(" 分析 [你的股票代码]\n\n", " analyze [your ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for post-close research only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 计算激增比例描述（降级方案使用）
      */
     private String getSurgeDescription(int frequency) {
-        if (frequency >= 25) {
-            return "较昨日激增 400%+";
-        } else if (frequency >= 15) {
-            return "较昨日激增 200%+";
-        } else if (frequency >= 10) {
-            return "较昨日显著上升";
-        } else {
-            return "活跃度一般";
-        }
+        return pushLanguageService.surgeDescription(frequency);
     }
 
     private String sanitizeModelOutput(String output) {
@@ -1087,33 +1288,181 @@ public class AISummaryServiceImpl implements AISummaryService {
         return cleaned.trim();
     }
 
+    private String resolveAMorningReportPrompt() {
+        return pushLanguageService.isEnglish() ? A_MORNING_REPORT_PROMPT_EN : A_MORNING_REPORT_PROMPT;
+    }
+
+    private String resolveAEveningReportPrompt() {
+        return pushLanguageService.isEnglish() ? A_EVENING_REPORT_PROMPT_EN : A_EVENING_REPORT_PROMPT;
+    }
+
+    private String buildStrictEnglishRetryPrompt(String originalPrompt, String reportDate, boolean morning) {
+        String title = morning
+                ? "# 🌅 A-Stock Pre-Market Alert Radar | " + reportDate
+                : "# 🌆 A-Stock Post-Close Decode | " + reportDate;
+        return """
+                [Retry Requirement]
+                The previous response was invalid because it still contained Chinese.
+                Regenerate the entire markdown report in English only.
+                Do not use Chinese in headings, labels, explanations, source-title paraphrases, empty states, calls to action, or disclaimers.
+                Company names and stock codes may remain unchanged.
+                The title must be exactly: %s
+
+                %s
+                """.formatted(title, originalPrompt);
+    }
+
+    private boolean containsChineseCharacters(String text) {
+        return text != null && HAN_PATTERN.matcher(text).find();
+    }
+
     private String ensureAStockMarkdown(String markdown,
                                         AReportFusionContext reportContext,
                                         String reportDate,
                                         boolean morning) {
         String cleaned = sanitizeModelOutput(markdown);
+        boolean hasExpectedSections = pushLanguageService.isEnglish()
+                ? cleaned.contains("## Macro Themes")
+                && cleaned.contains("## Resonance Picks")
+                && cleaned.contains("## Opportunity Board")
+                && cleaned.contains("## Risk Board")
+                : cleaned.contains("## 宏观主线")
+                && cleaned.contains("## 共振标的")
+                && cleaned.contains("## 机会榜")
+                && cleaned.contains("## 风险榜");
         if (cleaned.isBlank()
                 || !cleaned.startsWith("#")
-                || !cleaned.contains("## 宏观主线")
-                || !cleaned.contains("## 共振标的")
-                || !cleaned.contains("## 机会榜")
-                || !cleaned.contains("## 风险榜")) {
+                || !hasExpectedSections) {
             log.warn("A股 Markdown 输出不符合预期，使用降级模板。内容: {}", cleaned);
             String fallback = morning
                     ? generateAMorningFallbackMarkdown(reportContext, reportDate)
                     : generateEveningFallbackMarkdown(reportContext, reportDate);
             return injectAStockScoreNote(fallback, morning);
         }
-        return injectAStockScoreNote(cleaned, morning);
+        return injectAStockScoreNote(normalizeAStockMarkdown(cleaned, reportDate, morning), morning);
     }
 
-    private String injectAStockScoreNote(String markdown, boolean morning) {
-        if (markdown == null || markdown.isBlank() || markdown.contains("口径说明：")) {
+    private String normalizeAStockMarkdown(String markdown, String reportDate, boolean morning) {
+        if (!pushLanguageService.isEnglish() || markdown == null || markdown.isBlank()) {
+            return markdown;
+        }
+        String normalized = markdown.replace("\r\n", "\n");
+        normalized = normalizeAStockLead(normalized, reportDate, morning);
+        return normalizeAStockEnglishLabels(normalized);
+    }
+
+    private String normalizeAStockLead(String markdown, String reportDate, boolean morning) {
+        String[] lines = markdown.split("\n", -1);
+        int firstSectionIndex = -1;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith("## ")) {
+                firstSectionIndex = i;
+                break;
+            }
+        }
+        if (firstSectionIndex < 0) {
             return markdown;
         }
 
-        String note = morning ? A_MORNING_SCORE_NOTE : A_EVENING_SCORE_NOTE;
-        int sectionIndex = markdown.indexOf("## 宏观主线");
+        List<String> rebuilt = new ArrayList<>();
+        rebuilt.add(morning
+                ? "# 🌅 A-Stock Pre-Market Alert Radar | " + reportDate
+                : "# 🌆 A-Stock Post-Close Decode | " + reportDate);
+        rebuilt.add("");
+        rebuilt.add(morning
+                ? "Over the last 24 hours, the system completed notice de-noising, event clustering, macro-theme aggregation, and risk routing. These are the main themes, resonance picks, opportunities, and risks worth watching before the open:"
+                : "The A-stock market has closed. The system reviewed intraday notices from 09:00 to 15:00 and overlaid macro themes to split the tape into opportunity, risk, and resonance tracks:");
+        rebuilt.add("");
+        for (int i = firstSectionIndex; i < lines.length; i++) {
+            rebuilt.add(lines[i]);
+        }
+        return String.join("\n", rebuilt).replaceAll("\n{3,}", "\n\n").trim();
+    }
+
+    private String normalizeAStockEnglishLabels(String markdown) {
+        String normalized = markdown;
+        normalized = normalized.replace("## 宏观主线", "## Macro Themes");
+        normalized = normalized.replace("## 共振标的", "## Resonance Picks");
+        normalized = normalized.replace("## 机会榜", "## Opportunity Board");
+        normalized = normalized.replace("## 风险榜", "## Risk Board");
+        normalized = normalized.replace("🇨🇳 A-Shares", "🇨🇳 Stock");
+        normalized = normalized.replace("🇨🇳 A股", "🇨🇳 Stock");
+        normalized = normalized.replace("A股分析专家", "Stock expert");
+        normalized = normalized.replace("A-Share Analyst", "Stock expert");
+        normalized = normalized.replace("A-Share", "A-Stock");
+        normalized = normalized.replace("A-share", "A-stock");
+        normalized = normalized.replace("A-shares", "A-stocks");
+        normalized = normalized.replace("> 🧭 主线方向：", "> 🧭 Direction: ");
+        normalized = normalized.replace("> 🧭 方向判断：", "> 🧭 Direction: ");
+        normalized = normalized.replace("> 🎯 主题强度：", "> 🎯 Theme Strength: ");
+        normalized = normalized.replace("> 🧠 主线解读：", "> 🧠 Interpretation: ");
+        normalized = normalized.replace("> 🧠 盘面影响解码：", "> 🧠 Interpretation: ");
+        normalized = normalized.replace("> 🧠 盘面影响：", "> 🧠 Interpretation: ");
+        normalized = normalized.replace("> 🔗 共振强度：", "> 🔗 Resonance Score: ");
+        normalized = normalized.replace("> 🧠 共振逻辑：", "> 🧠 Resonance Logic: ");
+        normalized = normalized.replace("> 🧠 共振逻辑解码：", "> 🧠 Resonance Decode: ");
+        normalized = normalized.replace("> 🏷️ 身位判定：", "> 🏷️ Positioning: ");
+        normalized = normalized.replace("> 📈 事件判断：", "> 📈 Event View: ");
+        normalized = normalized.replace("> ⚠️ 事件判断：", "> ⚠️ Event View: ");
+        normalized = normalized.replace("> 🎯 事件评分：", "> 🎯 Event Score: ");
+        normalized = normalized.replace("> 🧠 核心预期差：", "> 🧠 Core Setup: ");
+        normalized = normalized.replace("> 🧠 风险焦点：", "> 🧠 Risk Focus: ");
+        normalized = normalized.replace("> 🧠 涨跌逻辑解码：", "> 🧠 Price Action Decode: ");
+        normalized = normalized.replace("💡 AI 深度查股：", "💡 AI Deep Dive:");
+        normalized = normalized.replace("💡 持仓深度体检：", "💡 Position Check:");
+        normalized = normalized.replace("想看上述股票的具体公告源？或者查询你的自选股？", "Want the underlying notice sources or a custom watchlist check?");
+        normalized = normalized.replace("今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？", "If today's tape was confusing, ask whether a hidden risk hit one of your holdings.");
+        normalized = normalized.replace("👉 请在群内直接发送：@", "👉 Send @");
+        normalized = normalized.replace(" 分析 [股票代码]", " analyze [ticker]");
+        normalized = normalized.replace(" 分析 [你的股票代码]", " analyze [your ticker]");
+        normalized = normalized.replace("[AI分析中...]", "[AI reviewing...]");
+        normalized = normalized.replace("【AI分析中...】", "【AI reviewing...】");
+        normalized = normalized.replace("【利多】", "【Bullish】");
+        normalized = normalized.replace("【利空】", "【Bearish】");
+        normalized = normalized.replace("【中性】", "【Neutral】");
+        normalized = normalized.replace("[利多]", "[Bullish]");
+        normalized = normalized.replace("[利空]", "[Bearish]");
+        normalized = normalized.replace("[中性]", "[Neutral]");
+        normalized = normalized.replace("强烈看多", "Strong Bullish");
+        normalized = normalized.replace("谨慎看多", "Cautiously Bullish");
+        normalized = normalized.replace("中性观望", "Neutral");
+        normalized = normalized.replace("利空预警", "Bearish Alert");
+        normalized = normalized.replace("主线级", "Main-Theme Tier");
+        normalized = normalized.replace("高优先级", "High Priority");
+        normalized = normalized.replace("边际催化", "Marginal Catalyst");
+        normalized = normalized.replace("强共振", "Strong Resonance");
+        normalized = normalized.replace("高共振", "High Resonance");
+        normalized = normalized.replace("弱共振", "Mild Resonance");
+        normalized = normalized.replace("领军核心", "Leading Core");
+        normalized = normalized.replace("高弹性跟风", "High-Beta Follower");
+        normalized = normalized.replace("观察名单", "Watchlist");
+        normalized = normalized.replace("暂无达到阈值的宏观主线", "No macro theme met the threshold");
+        normalized = normalized.replace("暂无公告与主题共振标的", "No notice-theme resonance pick met the threshold");
+        normalized = normalized.replace("暂无达到阈值的机会事件", "No opportunity event met the threshold");
+        normalized = normalized.replace("暂无高优先级风险事件", "No high-priority risk event was detected");
+        normalized = normalized.replace("，", ", ");
+        normalized = normalized.replaceAll("(\\d+) 分(?=\\s*[,(])", "$1 points");
+        normalized = normalized.replace("(事件评分 ", "(Event score ");
+        normalized = normalized.replaceAll("关联\\s*(\\d+)\\s*只映射标的", "associated with $1 mapped stocks");
+        normalized = normalized.replaceAll("(\\d+) 个事件簇 / (\\d+) 条支撑公告", "$1 event clusters / $2 supporting notices");
+        normalized = normalized.replaceAll("监控到\\s*(\\d+)\\s*次高频异动", "$1 high-frequency mentions monitored");
+        normalized = normalized.replaceAll("(?m)^> ([🔥📈📉⚖️]) 当日热度：", "> $1 Session Heat: ");
+        normalized = normalized.replace("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.");
+        normalized = normalized.replace("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for post-close research only. It is not investment advice.");
+        return normalized;
+    }
+
+    private String injectAStockScoreNote(String markdown, boolean morning) {
+        if (markdown == null || markdown.isBlank()
+                || markdown.contains("口径说明：")
+                || markdown.contains("Methodology:")) {
+            return markdown;
+        }
+
+        String note = morning ? aMorningScoreNote() : aEveningScoreNote();
+        int sectionIndex = markdown.indexOf(pushLanguageService.isEnglish() ? "## Macro Themes" : "## 宏观主线");
         if (sectionIndex < 0) {
             return markdown + "\n\n" + note;
         }
@@ -1140,9 +1489,14 @@ public class AISummaryServiceImpl implements AISummaryService {
     private <T> String generateFallbackMarkdown(List<StockAlertDTO<T>> stockAlertList, String reportDate, 
                                                   String market, String flag) {
         StringBuilder sb = new StringBuilder();
-        String reportTitle = market.equals("美股") ? "# 🌅 AI 盘前异动雷达 | " : "# 🌅 A股盘前异动雷达 | ";
+        boolean usMarket = market.equals("美股") || market.equals("US stocks");
+        String reportTitle = usMarket
+                ? pushLanguageService.text("# 🌅 AI 盘前异动雷达 | ", "# 🌅 AI Pre-Market Alert Radar | ")
+                : pushLanguageService.text("# 🌅 A股盘前异动雷达 | ", "# 🌅 A-Stock Pre-Market Alert Radar | ");
         sb.append(reportTitle).append(reportDate).append("\n\n");
-        sb.append("过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音），以下标的爆发密集异动，请注意盘前风险与机会：\n\n");
+        sb.append(pushLanguageService.text(
+                "过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音），以下标的爆发密集异动，请注意盘前风险与机会：\n\n",
+                "In the last 24 hours, the system scanned public financial sources after filtering administrative noise. The following names showed dense activity worth checking before the open:\n\n"));
 
         for (int i = 0; i < stockAlertList.size(); i++) {
             StockAlertDTO<T> dto = stockAlertList.get(i);
@@ -1164,53 +1518,75 @@ public class AISummaryServiceImpl implements AISummaryService {
                 title = stock.getTitle();
                 tag = stock.getRelatedTitles() != null ? stock.getRelatedTitles() : stock.getTag();
             } else {
-                stockCode = "未知";
+                stockCode = pushLanguageService.text("未知", "Unknown");
             }
 
             String displayName = stockName != null ? stockName : stockCode;
             
             sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | ").append(flag).append(" ").append(market).append("\n");
             if (dto.getStock() instanceof AStockRss) {
-                sb.append("> 📈 事件判断：<font color=\"comment\">【AI分析中...】</font>\n");
-                sb.append("> 🎯 事件评分：<font color=\"").append(dto.getSignalColorTag()).append("\">")
-                        .append(dto.getSignalScore()).append(" 分 (")
-                        .append(dto.getSignalLevel()).append("，")
-                        .append(dto.getEventCount()).append(" 个事件簇 / ")
-                        .append(dto.getFrequency()).append(" 条支撑公告)</font>\n");
+                sb.append("> ").append(pushLanguageService.text("📈 事件判断", "📈 Event View")).append("：<font color=\"comment\">【")
+                        .append(pushLanguageService.text("AI分析中...", "AI reviewing...")).append("】</font>\n");
+                sb.append("> ").append(pushLanguageService.text("🎯 事件评分", "🎯 Event Score")).append("：<font color=\"").append(dto.getSignalColorTag()).append("\">")
+                        .append(dto.getSignalScore()).append(pushLanguageService.text(" 分 (", " ("))
+                        .append(pushLanguageService.signalLevel(dto.getSignalScore())).append(pushLanguageService.text("，", ", "))
+                        .append(dto.getEventCount()).append(pushLanguageService.text(" 个事件簇 / ", " event clusters / "))
+                        .append(dto.getFrequency()).append(pushLanguageService.text(" 条支撑公告)", " supporting notices)"))
+                        .append("</font>\n");
             } else {
                 String surgeDesc = getSurgeDescription(dto.getFrequency());
-                sb.append("> 📈 情绪雷达：<font color=\"comment\">【AI分析中...】</font>\n");
-                sb.append("> 📊 异动频次：<font color=\"").append(dto.getColorTag()).append("\">").append(dto.getFrequency()).append(" 次 (").append(dto.getActivityLevel()).append(", ").append(surgeDesc).append(")</font>\n");
+                sb.append("> ").append(pushLanguageService.text("📈 情绪雷达", "📈 Sentiment Radar")).append("：<font color=\"comment\">【")
+                        .append(pushLanguageService.text("AI分析中...", "AI reviewing...")).append("】</font>\n");
+                sb.append("> ").append(pushLanguageService.text("📊 异动频次", "📊 Mention Frequency")).append("：<font color=\"").append(dto.getColorTag()).append("\">")
+                        .append(dto.getFrequency()).append(pushLanguageService.text(" 次 (", " ("))
+                        .append(pushLanguageService.activityLevel(dto.getFrequency())).append(", ").append(surgeDesc).append(")</font>\n");
             }
-            sb.append("> 🧠 核心催化剂：").append(title != null ? title : "暂无详细分析");
+            sb.append("> ").append(pushLanguageService.text("🧠 核心催化剂", "🧠 Core Catalyst")).append("：")
+                    .append(title != null ? title : pushLanguageService.text("暂无详细分析", "No detailed analysis yet"));
             if (tag != null && !tag.isEmpty()) {
-                sb.append(" 相关标题：[").append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
+                sb.append(pushLanguageService.text(" 相关标题：[", " Related titles: ["))
+                        .append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
             }
             sb.append("\n\n");
         }
 
-        String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
-        sb.append("💡 AI 深度查股：\n");
-        sb.append("想看上述股票的具体新闻源？或者查询你的自选股？\n");
-        sb.append("👉 请在群内直接发送：").append(botName).append(" 分析 [股票代码]\n\n");
-        sb.append("<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>");
+        String botName = "@" + (usMarket ? pushLanguageService.botNameForUS() : pushLanguageService.botNameForA());
+        sb.append(pushLanguageService.text("💡 AI 深度查股：\n想看上述股票的具体新闻源？或者查询你的自选股？\n👉 请在群内直接发送：",
+                "💡 AI Deep Dive:\nWant the underlying news sources or a custom watchlist check?\n👉 Send: "))
+                .append(botName)
+                .append(pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n"));
+        sb.append("<font color=\"comment\">")
+                .append(pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                        "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice."))
+                .append("</font>");
 
         return sb.toString();
     }
 
     private String generateAMorningFallbackMarkdown(AReportFusionContext reportContext, String reportDate) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# 🌅 A股盘前异动雷达 | ").append(reportDate).append("\n\n");
-        sb.append("过去 24 小时内，系统完成了公告去噪、事件聚类、宏观主题聚合与风险分流，以下标的是盘前最值得关注的主线、共振与风险：\n\n");
+        sb.append(pushLanguageService.text("# 🌅 A股盘前异动雷达 | ", "# 🌅 A-Stock Pre-Market Alert Radar | "))
+                .append(reportDate).append("\n\n");
+        sb.append(pushLanguageService.text(
+                "过去 24 小时内，系统完成了公告去噪、事件聚类、宏观主题聚合与风险分流，以下标的是盘前最值得关注的主线、共振与风险：\n\n",
+                "Over the last 24 hours, the system completed notice de-noising, event clustering, macro-theme aggregation, and risk routing. These are the main themes, resonance picks, opportunities, and risks worth watching before the open:\n\n"));
         appendMarketSnapshotBanner(sb, reportContext.getMarketSnapshot());
         appendMacroThemeSection(sb, reportContext.getMacroThemes());
         appendResonanceSection(sb, reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights(), true);
-        appendAMorningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights(), false);
-        appendAMorningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), reportContext.getOpportunityInsights(), true);
-        sb.append("💡 AI 深度查股：\n");
-        sb.append("想看上述股票的具体公告源？或者查询你的自选股？\n");
-        sb.append("👉 请在群内直接发送：@A股分析专家 分析 [股票代码]\n\n");
-        sb.append("<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>");
+        appendAMorningSection(sb, pushLanguageService.text("机会榜", "Opportunity Board"),
+                pushLanguageService.text("暂无达到阈值的机会事件", "No opportunity event met the threshold"),
+                reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights(), false);
+        appendAMorningSection(sb, pushLanguageService.text("风险榜", "Risk Board"),
+                pushLanguageService.text("暂无高优先级风险事件", "No high-priority risk event was detected"),
+                reportContext.getRiskAlerts(), reportContext.getOpportunityInsights(), true);
+        sb.append(pushLanguageService.text("💡 AI 深度查股：\n想看上述股票的具体公告源？或者查询你的自选股？\n👉 请在群内直接发送：@",
+                "💡 AI Deep Dive:\nWant the underlying notice sources or a custom watchlist check?\n👉 Send @"))
+                .append(pushLanguageService.botNameForA())
+                .append(pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n"));
+        sb.append("<font color=\"comment\">")
+                .append(pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                        "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice."))
+                .append("</font>");
         return sb.toString();
     }
 
@@ -1234,31 +1610,38 @@ public class AISummaryServiceImpl implements AISummaryService {
             String title = stock.getTitle() != null ? stock.getTitle() : "暂无详细分析";
             String tag = stock.getRelatedTitles() != null ? stock.getRelatedTitles() : stock.getTag();
 
-            sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | 🇨🇳 A股\n");
-            sb.append("> ").append(riskSection ? "⚠️" : "📈").append(" 事件判断：<font color=\"")
+            sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | ")
+                    .append(pushLanguageService.text("🇨🇳 A股", "🇨🇳 Stock")).append("\n");
+            sb.append("> ").append(riskSection ? "⚠️" : "📈").append(" ")
+                    .append(pushLanguageService.text("事件判断", "Event View")).append("：<font color=\"")
                     .append(dto.getSignalColorTag()).append("\">【")
                     .append(resolveFallbackSignalLabel(dto)).append("】</font>\n");
             if (!riskSection) {
                 appendPositionLine(sb, insightByCode.get(stockCode));
             }
-            sb.append("> 🎯 事件评分：<font color=\"").append(dto.getSignalColorTag()).append("\">")
-                    .append(dto.getSignalScore()).append(" 分 (")
-                    .append(dto.getSignalLevel()).append("，")
-                    .append(dto.getEventCount()).append(" 个事件簇 / ")
-                    .append(dto.getFrequency()).append(" 条支撑公告)</font>\n");
-            sb.append("> ").append(riskSection ? "🧠 风险焦点：" : "🧠 核心预期差：")
+            sb.append("> ").append(pushLanguageService.text("🎯 事件评分", "🎯 Event Score")).append("：<font color=\"").append(dto.getSignalColorTag()).append("\">")
+                    .append(dto.getSignalScore()).append(pushLanguageService.text(" 分 (", " ("))
+                    .append(pushLanguageService.signalLevel(dto.getSignalScore())).append(pushLanguageService.text("，", ", "))
+                    .append(dto.getEventCount()).append(pushLanguageService.text(" 个事件簇 / ", " event clusters / "))
+                    .append(dto.getFrequency()).append(pushLanguageService.text(" 条支撑公告)", " supporting notices)")).append("</font>\n");
+            sb.append("> ").append(riskSection
+                    ? pushLanguageService.text("🧠 风险焦点：", "🧠 Risk Focus: ")
+                    : pushLanguageService.text("🧠 核心预期差：", "🧠 Core Setup: "))
                     .append(title);
             if (tag != null && !tag.isEmpty()) {
-                sb.append(" 相关标题：[").append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
+                sb.append(pushLanguageService.text(" 相关标题：[", " Related titles: ["))
+                        .append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
             }
             sb.append("\n\n");
         }
     }
 
     private void appendMacroThemeSection(StringBuilder sb, List<MacroThemeEvent> macroThemes) {
-        sb.append("## 宏观主线\n\n");
+        sb.append("## ").append(pushLanguageService.text("宏观主线", "Macro Themes")).append("\n\n");
         if (macroThemes == null || macroThemes.isEmpty()) {
-            sb.append("<font color=\"comment\">暂无达到阈值的宏观主线</font>\n\n");
+            sb.append("<font color=\"comment\">")
+                    .append(pushLanguageService.text("暂无达到阈值的宏观主线", "No macro theme met the threshold"))
+                    .append("</font>\n\n");
             return;
         }
         for (int i = 0; i < Math.min(A_STOCK_SECTION_LIMIT, macroThemes.size()); i++) {
@@ -1268,17 +1651,18 @@ public class AISummaryServiceImpl implements AISummaryService {
             String level = resolveMacroSignalLevel(safeInt(theme.getSignalScore()));
             sb.append("> ").append(i + 1).append(". ")
                     .append(theme.getThemeName()).append(" | ")
-                    .append(defaultText(theme.getEventType(), "主题事件")).append("\n");
-            sb.append("> 🧭 主线方向：<font color=\"").append(colorTag).append("\">【")
+                    .append(defaultText(pushLanguageService.eventType(theme.getEventType()), pushLanguageService.text("主题事件", "Theme Event"))).append("\n");
+            sb.append("> ").append(pushLanguageService.text("🧭 主线方向", "🧭 Direction")).append("：<font color=\"").append(colorTag).append("\">【")
                     .append(sideLabel).append("】</font>\n");
-            sb.append("> 🎯 主题强度：<font color=\"").append(colorTag).append("\">")
-                    .append(safeInt(theme.getSignalScore())).append(" 分 (")
-                    .append(level).append("，关联 ")
+            sb.append("> ").append(pushLanguageService.text("🎯 主题强度", "🎯 Theme Strength")).append("：<font color=\"").append(colorTag).append("\">")
+                    .append(safeInt(theme.getSignalScore())).append(pushLanguageService.text(" 分 (", " ("))
+                    .append(level).append(pushLanguageService.text("，关联 ", ", "))
                     .append(theme.getMappedStockCount() != null ? theme.getMappedStockCount() : 0)
-                    .append(" 只映射标的)</font>\n");
-            sb.append("> 🧠 主线解读：").append(defaultText(theme.getTitle(), "暂无主题标题"));
+                    .append(pushLanguageService.text(" 只映射标的)", " mapped stocks)")).append("</font>\n");
+            sb.append("> ").append(pushLanguageService.text("🧠 主线解读：", "🧠 Interpretation: ")).append(defaultText(theme.getTitle(), pushLanguageService.text("暂无主题标题", "No theme title")));
             if (isNotBlank(theme.getMappedStocks())) {
-                sb.append(" 关联标的[").append(truncate(theme.getMappedStocks(), 60)).append("]");
+                sb.append(pushLanguageService.text(" 关联标的[", " Mapped names ["))
+                        .append(truncate(theme.getMappedStocks(), 60)).append("]");
             }
             sb.append("\n\n");
         }
@@ -1288,23 +1672,28 @@ public class AISummaryServiceImpl implements AISummaryService {
                                         List<AReportResonanceCard> resonanceCards,
                                         List<AReportOpportunityInsight> opportunityInsights,
                                         boolean morning) {
-        sb.append("## 共振标的\n\n");
+        sb.append("## ").append(pushLanguageService.text("共振标的", "Resonance Picks")).append("\n\n");
         if (resonanceCards == null || resonanceCards.isEmpty()) {
-            sb.append("<font color=\"comment\">暂无公告与主题共振标的</font>\n\n");
+            sb.append("<font color=\"comment\">")
+                    .append(pushLanguageService.text("暂无公告与主题共振标的", "No notice-theme resonance pick met the threshold"))
+                    .append("</font>\n\n");
             return;
         }
         Map<String, AReportOpportunityInsight> insightByCode = indexInsights(opportunityInsights);
         for (int i = 0; i < Math.min(A_STOCK_SECTION_LIMIT, resonanceCards.size()); i++) {
             AReportResonanceCard card = resonanceCards.get(i);
-            String stockCode = defaultText(card.getStockCode(), "未知");
+            String stockCode = defaultText(card.getStockCode(), pushLanguageService.text("未知", "Unknown"));
             String stockName = defaultText(card.getStockName(), stockCode);
             sb.append("> ").append(i + 1).append(". ").append(stockName).append(" (").append(stockCode).append(") | ")
-                    .append(defaultText(card.getMacroThemeName(), "宏观主题")).append("\n");
-            sb.append("> 🔗 共振强度：<font color=\"").append(card.getColorTag()).append("\">")
-                    .append(card.getFusionScore()).append(" 分 (").append(card.getFusionLevel()).append(")</font>\n");
+                    .append(defaultText(card.getMacroThemeName(), pushLanguageService.text("宏观主题", "Macro Theme"))).append("\n");
+            sb.append("> ").append(pushLanguageService.text("🔗 共振强度", "🔗 Resonance Score")).append("：<font color=\"").append(card.getColorTag()).append("\">")
+                    .append(card.getFusionScore()).append(pushLanguageService.text(" 分 (", " ("))
+                    .append(pushLanguageService.fusionLevel(card.getFusionScore())).append(")</font>\n");
             appendPositionLine(sb, insightByCode.get(stockCode));
-            sb.append("> 🧠 ").append(morning ? "共振逻辑：" : "共振逻辑解码：")
-                    .append(defaultText(card.getNoticeTitle(), "暂无公告标题"));
+            sb.append("> ").append(morning
+                    ? pushLanguageService.text("🧠 共振逻辑：", "🧠 Resonance Logic: ")
+                    : pushLanguageService.text("🧠 共振逻辑解码：", "🧠 Resonance Decode: "))
+                    .append(defaultText(card.getNoticeTitle(), pushLanguageService.text("暂无公告标题", "No notice title")));
             if (isNotBlank(card.getMacroTitle())) {
                 sb.append(" + ").append(truncate(card.getMacroTitle(), 60));
             }
@@ -1314,29 +1703,39 @@ public class AISummaryServiceImpl implements AISummaryService {
 
     private String resolveFallbackSignalLabel(StockAlertDTO<AStockRss> dto) {
         if ("利空".equals(dto.getSignalSide())) {
-            return "利空预警";
+            return pushLanguageService.text("利空预警", "Bearish Alert");
         }
         if (dto.getSignalScore() >= 110) {
-            return "强烈看多";
+            return pushLanguageService.text("强烈看多", "Strong Bullish");
         }
         if (dto.getSignalScore() >= 80) {
-            return "谨慎看多";
+            return pushLanguageService.text("谨慎看多", "Cautiously Bullish");
         }
-        return "中性观望";
+        return pushLanguageService.text("中性观望", "Neutral");
     }
 
     /**
      * 构建美股早报（隔夜复盘）无数据 Markdown 消息
      */
     private String buildUSOvernightNoDataMarkdown(String reportDate) {
-        return "# 🌅 美股早报 | " + reportDate + "\n\n" +
-               "昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无 🇺🇸 美股需要解码的隔夜异动数据</font>\n" +
-               "<font color=\"comment\">（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
-               "💡 隔夜行情复盘：\n" +
-               "昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n" +
-               "👉 请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌅 美股早报 | ", "# 🌅 US Overnight Recap | ") + reportDate + "\n\n"
+                + pushLanguageService.text("昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n",
+                "The US market has closed. The system replayed the full overnight information flow from 21:30 to 04:00 Beijing time.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无 🇺🇸 美股需要解码的隔夜异动数据", "⚠️ No overnight US stock activity met the recap threshold")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 mentions for the same ticker in 24h; quality over quantity.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 隔夜行情复盘：\n昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n👉 请在群内直接发送：@",
+                "💡 Overnight Replay:\nIf last night's move caught you off guard, ask what actually hit your watchlist:\n👉 Send @")
+                + pushLanguageService.botNameForUS()
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for overnight research only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
@@ -1344,8 +1743,11 @@ public class AISummaryServiceImpl implements AISummaryService {
      */
     private String generateUSOvernightFallbackMarkdown(List<StockAlertDTO<USStockRss>> stockAlertList, String reportDate) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# 🌅 美股早报 | ").append(reportDate).append("\n\n");
-        sb.append("昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹，以下标的是昨夜资金博弈的绝对核心：\n\n");
+        sb.append(pushLanguageService.text("# 🌅 美股早报 | ", "# 🌅 US Overnight Recap | "))
+                .append(reportDate).append("\n\n");
+        sb.append(pushLanguageService.text(
+                "昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹，以下标的是昨夜资金博弈的绝对核心：\n\n",
+                "The US market has closed. The system replayed the overnight information flow from 21:30 to 04:00 Beijing time. These names drew the strongest capital attention:\n\n"));
 
         for (int i = 0; i < stockAlertList.size(); i++) {
             StockAlertDTO<USStockRss> dto = stockAlertList.get(i);
@@ -1358,28 +1760,37 @@ public class AISummaryServiceImpl implements AISummaryService {
             String heatLevel;
             if (dto.getFrequency() >= 30) {
                 heatIcon = "🔥";
-                heatLevel = "爆发";
+                heatLevel = pushLanguageService.text("爆发", "Explosive");
             } else if (dto.getFrequency() >= 20) {
                 heatIcon = dto.getColorTag().equals("warning") ? "📉" : "📈";
-                heatLevel = "高热";
+                heatLevel = pushLanguageService.text("高热", "High Heat");
             } else {
                 heatIcon = "⚖️";
-                heatLevel = "活跃";
+                heatLevel = pushLanguageService.text("活跃", "Active");
             }
             
-            sb.append("> ").append(i + 1).append(". ").append(stockCode).append(" | 🇺🇸 美股\n");
-            sb.append("> ").append(heatIcon).append(" 隔夜热度：<font color=\"").append(dto.getColorTag()).append("\">").append(heatLevel).append(" (监控到 ").append(dto.getFrequency()).append(" 次高频异动)</font>\n");
-            sb.append("> 🧠 涨跌逻辑解码：[AI分析中...] ").append(title != null ? title : "暂无详细分析");
+            sb.append("> ").append(i + 1).append(". ").append(stockCode).append(" | ").append(pushLanguageService.text("🇺🇸 美股", "🇺🇸 US Stocks")).append("\n");
+            sb.append("> ").append(heatIcon).append(" ").append(pushLanguageService.text("隔夜热度", "Overnight Heat")).append("：<font color=\"").append(dto.getColorTag()).append("\">")
+                    .append(heatLevel).append(pushLanguageService.text(" (监控到 ", " ("))
+                    .append(dto.getFrequency()).append(pushLanguageService.text(" 次高频异动)", " high-frequency mentions monitored)")).append("</font>\n");
+            sb.append("> ").append(pushLanguageService.text("🧠 涨跌逻辑解码：", "🧠 Price Action Decode: "))
+                    .append(pushLanguageService.text("[AI分析中...] ", "[AI reviewing...] "))
+                    .append(title != null ? title : pushLanguageService.text("暂无详细分析", "No detailed analysis yet"));
             if (tag != null && !tag.isEmpty()) {
-                sb.append(" 相关标题：[").append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
+                sb.append(pushLanguageService.text(" 相关标题：[", " Related titles: ["))
+                        .append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
             }
             sb.append("\n\n");
         }
 
-        sb.append("💡 隔夜行情复盘：\n");
-        sb.append("昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n");
-        sb.append("👉 请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n");
-        sb.append("<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。</font>");
+        sb.append(pushLanguageService.text("💡 隔夜行情复盘：\n昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n👉 请在群内直接发送：@",
+                "💡 Overnight Replay:\nIf last night's move caught you off guard, ask what actually hit your watchlist:\n👉 Send @"))
+                .append(pushLanguageService.botNameForUS())
+                .append(pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n"));
+        sb.append("<font color=\"comment\">")
+                .append(pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。",
+                        "⚠️ Disclaimer: This recap is generated from public news and AI analysis for overnight research only. It is not investment advice."))
+                .append("</font>");
 
         return sb.toString();
     }
@@ -1389,18 +1800,29 @@ public class AISummaryServiceImpl implements AISummaryService {
      */
     private String generateEveningFallbackMarkdown(AReportFusionContext reportContext, String reportDate) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# 🌆 A股盘后情绪解码 | ").append(reportDate).append("\n\n");
-        sb.append("今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线：\n\n");
+        sb.append(pushLanguageService.text("# 🌆 A股盘后情绪解码 | ", "# 🌆 A-Stock Post-Close Decode | "))
+                .append(reportDate).append("\n\n");
+        sb.append(pushLanguageService.text(
+                "今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并叠加宏观主题线索，拆分出机会、风险与共振三条主线：\n\n",
+                "The A-stock market has closed. The system reviewed intraday notices from 09:00 to 15:00 and overlaid macro themes to split the tape into opportunity, risk, and resonance tracks:\n\n"));
         appendMarketSnapshotBanner(sb, reportContext.getMarketSnapshot());
         appendMacroThemeSection(sb, reportContext.getMacroThemes());
         appendResonanceSection(sb, reportContext.getResonanceCandidates(), reportContext.getOpportunityInsights(), false);
-        appendAEveningSection(sb, "机会榜", "暂无达到阈值的机会事件", reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights());
-        appendAEveningSection(sb, "风险榜", "暂无高优先级风险事件", reportContext.getRiskAlerts(), reportContext.getOpportunityInsights());
+        appendAEveningSection(sb, pushLanguageService.text("机会榜", "Opportunity Board"),
+                pushLanguageService.text("暂无达到阈值的机会事件", "No opportunity event met the threshold"),
+                reportContext.getOpportunityAlerts(), reportContext.getOpportunityInsights());
+        appendAEveningSection(sb, pushLanguageService.text("风险榜", "Risk Board"),
+                pushLanguageService.text("暂无高优先级风险事件", "No high-priority risk event was detected"),
+                reportContext.getRiskAlerts(), reportContext.getOpportunityInsights());
 
-        sb.append("💡 持仓深度体检：\n");
-        sb.append("今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n");
-        sb.append("👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n");
-        sb.append("<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>");
+        sb.append(pushLanguageService.text("💡 持仓深度体检：\n今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n👉 请在群内直接发送：@",
+                "💡 Position Check:\nIf today's tape was confusing, ask whether a hidden risk hit one of your holdings:\n👉 Send @"))
+                .append(pushLanguageService.botNameForA())
+                .append(pushLanguageService.text(" 分析 [你的股票代码]\n\n", " analyze [your ticker]\n\n"));
+        sb.append("<font color=\"comment\">")
+                .append(pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。",
+                        "⚠️ Disclaimer: This recap is generated from public news and AI analysis for post-close research only. It is not investment advice."))
+                .append("</font>");
 
         return sb.toString();
     }
@@ -1428,39 +1850,38 @@ public class AISummaryServiceImpl implements AISummaryService {
             String heatLevel;
             if (dto.getSignalScore() >= 110) {
                 heatIcon = "🔥";
-                heatLevel = "主线级";
+                heatLevel = pushLanguageService.text("主线级", "Main-Theme Tier");
             } else if (dto.getSignalScore() >= 80) {
                 heatIcon = "利空".equals(dto.getSignalSide()) ? "📉" : "📈";
-                heatLevel = "高优先级";
+                heatLevel = pushLanguageService.text("高优先级", "High Priority");
             } else {
                 heatIcon = "⚖️";
-                heatLevel = "边际催化";
+                heatLevel = pushLanguageService.text("边际催化", "Marginal Catalyst");
             }
 
-            sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | 🇨🇳 A股\n");
+            sb.append("> ").append(i + 1).append(". ").append(displayName).append(" (").append(stockCode).append(") | ")
+                    .append(pushLanguageService.text("🇨🇳 A股", "🇨🇳 Stock")).append("\n");
             appendPositionLine(sb, insightByCode.get(stockCode));
-            sb.append("> ").append(heatIcon).append(" 当日热度：<font color=\"").append(dto.getSignalColorTag()).append("\">")
-                    .append(heatLevel).append(" (事件评分 ").append(dto.getSignalScore()).append(" 分，")
-                    .append(dto.getEventCount()).append(" 个事件簇 / ").append(dto.getFrequency()).append(" 条支撑公告)</font>\n");
-            sb.append("> 🧠 涨跌逻辑解码：[AI分析中...] ").append(title);
+            sb.append("> ").append(heatIcon).append(" ").append(pushLanguageService.text("当日热度", "Session Heat")).append("：<font color=\"").append(dto.getSignalColorTag()).append("\">")
+                    .append(heatLevel).append(pushLanguageService.text(" (事件评分 ", " (Event score "))
+                    .append(dto.getSignalScore()).append(pushLanguageService.text(" 分，", ", "))
+                    .append(dto.getEventCount()).append(pushLanguageService.text(" 个事件簇 / ", " event clusters / "))
+                    .append(dto.getFrequency()).append(pushLanguageService.text(" 条支撑公告)", " supporting notices)")).append("</font>\n");
+            sb.append("> ").append(pushLanguageService.text("🧠 涨跌逻辑解码：", "🧠 Price Action Decode: "))
+                    .append(pushLanguageService.text("[AI分析中...] ", "[AI reviewing...] ")).append(title);
             if (tag != null && !tag.isEmpty()) {
-                sb.append(" 相关标题：[").append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
+                sb.append(pushLanguageService.text(" 相关标题：[", " Related titles: ["))
+                        .append(tag.substring(0, Math.min(50, tag.length()))).append("...]");
             }
             sb.append("\n\n");
         }
     }
 
     private String resolveMacroSignalLevel(int signalScore) {
-        if (signalScore >= 110) {
-            return "主线级";
+        if (signalScore < 60 && pushLanguageService.isEnglish()) {
+            return "Watch";
         }
-        if (signalScore >= 80) {
-            return "高优先级";
-        }
-        if (signalScore >= 60) {
-            return "边际催化";
-        }
-        return "观察";
+        return signalScore < 60 ? "观察" : pushLanguageService.signalLevel(signalScore);
     }
 
     private String resolveMacroColorTag(String signalSide, int signalScore) {
@@ -1480,23 +1901,17 @@ public class AISummaryServiceImpl implements AISummaryService {
     }
 
     private String resolveMacroSideLabel(String signalSide) {
-        if ("利空".equals(signalSide)) {
-            return "利空";
-        }
-        if ("利多".equals(signalSide)) {
-            return "利多";
-        }
-        return "中性";
+        return pushLanguageService.signalSideLabel(signalSide);
     }
 
     private void appendPositionLine(StringBuilder sb, AReportOpportunityInsight insight) {
         if (sb == null || insight == null) {
             return;
         }
-        sb.append("> 🏷️ 身位判定：<font color=\"").append(insight.getColorTag()).append("\">【")
-                .append(defaultText(insight.getPositionLabel(), "观察名单")).append("】</font>");
+        sb.append("> ").append(pushLanguageService.text("🏷️ 身位判定", "🏷️ Positioning")).append("：<font color=\"").append(insight.getColorTag()).append("\">【")
+                .append(defaultText(pushLanguageService.positionLabel(insight.getPositionLabel()), pushLanguageService.text("观察名单", "Watchlist"))).append("】</font>");
         if (isNotBlank(insight.getPositionReason())) {
-            sb.append(" ").append(truncate(insight.getPositionReason(), 48));
+            sb.append(" ").append(truncate(pushLanguageService.translatePositionReason(insight.getPositionReason()), 64));
         }
         sb.append("\n");
     }
@@ -1505,30 +1920,48 @@ public class AISummaryServiceImpl implements AISummaryService {
         if (sb == null || snapshot == null) {
             return;
         }
-        sb.append("<font color=\"comment\">当前市场状态：")
-                .append(snapshot.getMarketState() != null ? snapshot.getMarketState().getLabel() : MarketState.NEUTRAL.getLabel())
-                .append(" | 上证 ").append(formatPct(snapshot.getShChangePct()))
-                .append(" / 深成指 ").append(formatPct(snapshot.getSzChangePct()))
-                .append(" / 创业板 ").append(formatPct(snapshot.getCybChangePct()))
-                .append(" | 上涨 ").append(Math.max(0, snapshot.getUpCount()))
-                .append(" / 下跌 ").append(Math.max(0, snapshot.getDownCount()))
-                .append(" | 涨停 ").append(Math.max(0, snapshot.getLimitUpCount()))
-                .append(" / 跌停 ").append(Math.max(0, snapshot.getLimitDownCount()))
+        sb.append("<font color=\"comment\">").append(pushLanguageService.text("当前市场状态：", "Current market regime: "))
+                .append(snapshot.getMarketState() != null ? pushLanguageService.marketStateLabel(snapshot.getMarketState()) : pushLanguageService.marketStateLabel(MarketState.NEUTRAL))
+                .append(" | ").append(pushLanguageService.text("上证 ", "SSE ")).append(formatPct(snapshot.getShChangePct()))
+                .append(" / ").append(pushLanguageService.text("深成指 ", "SZSE ")).append(formatPct(snapshot.getSzChangePct()))
+                .append(" / ").append(pushLanguageService.text("创业板 ", "ChiNext ")).append(formatPct(snapshot.getCybChangePct()))
+                .append(" | ").append(pushLanguageService.text("上涨 ", "Advancers ")).append(Math.max(0, snapshot.getUpCount()))
+                .append(" / ").append(pushLanguageService.text("下跌 ", "Decliners ")).append(Math.max(0, snapshot.getDownCount()))
+                .append(" | ").append(pushLanguageService.text("涨停 ", "Limit-Up ")).append(Math.max(0, snapshot.getLimitUpCount()))
+                .append(" / ").append(pushLanguageService.text("跌停 ", "Limit-Down ")).append(Math.max(0, snapshot.getLimitDownCount()))
                 .append(" | ").append(resolveMarketInterpretation(snapshot))
                 .append("</font>\n\n");
     }
 
     private String resolveMarketInterpretation(MarketSnapshot snapshot) {
         if (snapshot == null) {
-            return "暂无市场快照，按中性环境处理";
+            return pushLanguageService.text("暂无市场快照，按中性环境处理", "No market snapshot is available, so treat the environment as neutral.");
         }
         MarketState marketState = snapshot.getMarketState() != null ? snapshot.getMarketState() : MarketState.NEUTRAL;
         return switch (marketState) {
-            case DEFENSIVE -> "盘面偏防守，优先识别风险扩散与逆势硬逻辑";
-            case RISK_ON -> "盘面进入进攻态，优先辨识带队龙头与主线扩散";
-            case OVERHEAT -> "盘面情绪过热，龙头仍强但后排追高容错下降";
-            default -> "盘面仍在中性区间，宁缺毋滥地筛选高确定性催化";
+            case DEFENSIVE -> pushLanguageService.text("盘面偏防守，优先识别风险扩散与逆势硬逻辑", "The tape is defensive. Prioritize risk propagation and truly resilient setups.");
+            case RISK_ON -> pushLanguageService.text("盘面进入进攻态，优先辨识带队龙头与主线扩散", "The tape is risk-on. Focus on leaders that can pull the theme forward.");
+            case OVERHEAT -> pushLanguageService.text("盘面情绪过热，龙头仍强但后排追高容错下降", "Sentiment is overheated. Leaders may still hold up, but chasing laggards is far less forgiving.");
+            default -> pushLanguageService.text("盘面仍在中性区间，宁缺毋滥地筛选高确定性催化", "The tape remains neutral. Stay selective and only keep high-conviction catalysts.");
         };
+    }
+
+    private String withLanguageInstruction(String basePrompt) {
+        return pushLanguageService.aiOutputInstruction() + "\n\n" + basePrompt;
+    }
+
+    private String aMorningScoreNote() {
+        return pushLanguageService.text(
+                "<font color=\"comment\">口径说明：机会榜/风险榜中的“事件评分”按最近24小时窗口内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或其他滚动窗口查询对比，分数可能不同。</font>",
+                "<font color=\"comment\">Methodology: The event score shown in the Opportunity Board and Risk Board is an aggregated stock score over the latest 24-hour window, not the raw score of a single notice. It may differ from MCP queries that use a 30-day or other rolling window.</font>"
+        );
+    }
+
+    private String aEveningScoreNote() {
+        return pushLanguageService.text(
+                "<font color=\"comment\">口径说明：下方“当日热度/事件评分”按今日 09:00-15:00 交易时段内的股票聚合分计算，不是单条公告原始分；若与 MCP 的近30天或最近24小时滚动窗口查询对比，分数可能不同。</font>",
+                "<font color=\"comment\">Methodology: The session heat and event score below are aggregated stock scores over today's 09:00-15:00 trading window, not the raw score of a single notice. They may differ from MCP queries using the latest 24 hours or a 30-day rolling window.</font>"
+        );
     }
 
     private String formatPct(double value) {

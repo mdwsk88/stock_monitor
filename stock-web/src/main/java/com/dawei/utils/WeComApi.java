@@ -5,13 +5,14 @@ import com.dawei.entity.AStockRealtimeAlertCard;
 import com.dawei.entity.USStockMsg;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -21,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -31,7 +33,6 @@ import java.util.stream.Collectors;
  **/
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class WeComApi {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -39,7 +40,6 @@ public class WeComApi {
     private static final int WECOM_MARKDOWN_SAFE_BYTES = 4000;
     private static final int WECOM_MARKDOWN_SECTION_SPLIT_TARGET_BYTES = 3000;
     private static final int WECOM_MARKDOWN_LINE_MAX_BYTES = 320;
-    private static final String MARKDOWN_TRUNCATION_NOTICE = "\n\n[内容过长，已截断]";
     private static final List<String> COMMON_MARKDOWN_EMOJIS = List.of(
             "🌅", "🌆", "🧭", "🎯", "🧠", "🔗", "📈", "⚠️", "⚠", "🔥", "💡", "👉", "📌",
             "🏢", "📅", "📰", "🏷️", "🏷", "📊", "📎", "🗂️", "🗂", "🇨🇳", "️"
@@ -62,6 +62,25 @@ public class WeComApi {
     private String webhookUrlDefault;
 
     private final RestTemplate restTemplate;
+    private final PushLanguageService pushLanguageService;
+    private final Executor notificationExecutor;
+
+    public WeComApi(RestTemplate restTemplate) {
+        this(restTemplate, new PushLanguageService(), Runnable::run);
+    }
+
+    public WeComApi(RestTemplate restTemplate, PushLanguageService pushLanguageService) {
+        this(restTemplate, pushLanguageService, Runnable::run);
+    }
+
+    @Autowired
+    public WeComApi(RestTemplate restTemplate,
+                    PushLanguageService pushLanguageService,
+                    @Qualifier("notificationExecutor") Executor notificationExecutor) {
+        this.restTemplate = restTemplate;
+        this.pushLanguageService = pushLanguageService;
+        this.notificationExecutor = notificationExecutor;
+    }
 
     /**
      * 市场类型枚举
@@ -95,9 +114,9 @@ public class WeComApi {
      */
     private String getBotName(MarketType marketType) {
         return switch (marketType) {
-            case US -> "美股分析专家";
-            case A -> "A股分析专家";
-            case HK -> "港股分析专家";
+            case US -> pushLanguageService.botNameForUS();
+            case A -> pushLanguageService.botNameForA();
+            case HK -> pushLanguageService.botNameForHK();
         };
     }
 
@@ -107,14 +126,15 @@ public class WeComApi {
      * @param stockMsg
      */
     public String formatStockInfo(USStockMsg stockMsg) {
-        return "<font color=\"info\">📌 代码：</font>" + stockMsg.getStockCode() + "\n" +
-               "<font color=\"comment\">📅 时间：</font>" + stockMsg.getPubDateBj() + "\n" +
-               "<font color=\"comment\">📰 标题（英文）：</font>" + stockMsg.getTitle() + "\n" +
-               "<font color=\"comment\">📰 标题（中文）：</font>" + stockMsg.getTitleZh() + "\n" +
-               "<font color=\"warning\">🏷️ 标签：</font>" + stockMsg.getTags() + "\n" +
-               "<font color=\"comment\">📊 统计：</font>24小时异动=" + stockMsg.getCounts24Hour() + "次; " +
-               "3天内异动=" + stockMsg.getCounts3Day() + "次; " +
-               "1周内异动=" + stockMsg.getCounts1Week() + "次";
+        return "<font color=\"info\">📌 " + pushLanguageService.text("代码", "Ticker") + "：</font>" + stockMsg.getStockCode() + "\n" +
+               "<font color=\"comment\">📅 " + pushLanguageService.text("时间", "Time") + "：</font>" + stockMsg.getPubDateBj() + "\n" +
+               "<font color=\"comment\">📰 " + pushLanguageService.text("标题（英文）", "Headline (EN)") + "：</font>" + stockMsg.getTitle() + "\n" +
+               "<font color=\"comment\">📰 " + pushLanguageService.text("标题（中文）", "Headline (ZH)") + "：</font>" + stockMsg.getTitleZh() + "\n" +
+               "<font color=\"warning\">🏷️ " + pushLanguageService.text("标签", "Tags") + "：</font>" + stockMsg.getTags() + "\n" +
+               "<font color=\"comment\">📊 " + pushLanguageService.text("统计", "Stats") + "：</font>"
+               + pushLanguageService.text("24小时异动=", "24h mentions=") + stockMsg.getCounts24Hour() + pushLanguageService.text("次; ", "; ")
+               + pushLanguageService.text("3天内异动=", "3d mentions=") + stockMsg.getCounts3Day() + pushLanguageService.text("次; ", "; ")
+               + pushLanguageService.text("1周内异动=", "1w mentions=") + stockMsg.getCounts1Week() + pushLanguageService.text("次", "");
     }
 
     /**
@@ -124,7 +144,7 @@ public class WeComApi {
      */
     public String formatStockInfoFromList(List<USStockMsg> stocks) {
         if (stocks == null || stocks.isEmpty()) {
-            return "暂无股票异动信息";
+            return pushLanguageService.text("暂无股票异动信息", "No stock alerts available");
         }
         return stocks.stream()
                 .map(this::formatStockInfo)
@@ -137,14 +157,15 @@ public class WeComApi {
      * @param stockMsg
      */
     public String formatStockInfoText(USStockMsg stockMsg) {
-        return "📌 代码：" + stockMsg.getStockCode() + "\n" +
-               "📅 时间：" + stockMsg.getPubDateBj() + "\n" +
-               "📰 标题（英文）：" + stockMsg.getTitle() + "\n" +
-               "📰 标题（中文）：" + stockMsg.getTitleZh() + "\n" +
-               "🏷️ 标签：" + stockMsg.getTags() + "\n" +
-               "📊 统计：24小时异动=" + stockMsg.getCounts24Hour() + "次; " +
-               "3天内异动=" + stockMsg.getCounts3Day() + "次; " +
-               "1周内异动=" + stockMsg.getCounts1Week() + "次";
+        return "📌 " + pushLanguageService.text("代码", "Ticker") + "：" + stockMsg.getStockCode() + "\n" +
+               "📅 " + pushLanguageService.text("时间", "Time") + "：" + stockMsg.getPubDateBj() + "\n" +
+               "📰 " + pushLanguageService.text("标题（英文）", "Headline (EN)") + "：" + stockMsg.getTitle() + "\n" +
+               "📰 " + pushLanguageService.text("标题（中文）", "Headline (ZH)") + "：" + stockMsg.getTitleZh() + "\n" +
+               "🏷️ " + pushLanguageService.text("标签", "Tags") + "：" + stockMsg.getTags() + "\n" +
+               "📊 " + pushLanguageService.text("统计", "Stats") + "："
+               + pushLanguageService.text("24小时异动=", "24h mentions=") + stockMsg.getCounts24Hour() + pushLanguageService.text("次; ", "; ")
+               + pushLanguageService.text("3天内异动=", "3d mentions=") + stockMsg.getCounts3Day() + pushLanguageService.text("次; ", "; ")
+               + pushLanguageService.text("1周内异动=", "1w mentions=") + stockMsg.getCounts1Week() + pushLanguageService.text("次", "");
     }
 
     /**
@@ -154,7 +175,7 @@ public class WeComApi {
      */
     public String formatStockInfoTextFromList(List<USStockMsg> stocks) {
         if (stocks == null || stocks.isEmpty()) {
-            return "暂无股票异动信息";
+            return pushLanguageService.text("暂无股票异动信息", "No stock alerts available");
         }
         return stocks.stream()
                 .map(this::formatStockInfoText)
@@ -174,9 +195,12 @@ public class WeComApi {
         }
     }
 
-    @Async("notificationExecutor")
     public CompletableFuture<Boolean> sendMarkdownMessageAsync(String markdownContent, MarketType marketType) {
-        return CompletableFuture.completedFuture(sendMessage(markdownContent, "markdown", marketType));
+        List<String> preparedContents = prepareContentsForSend(markdownContent, "markdown", marketType);
+        return CompletableFuture.supplyAsync(
+                () -> sendPreparedContents(preparedContents, "markdown", marketType),
+                notificationExecutor
+        );
     }
 
     /**
@@ -188,7 +212,6 @@ public class WeComApi {
         sendMarkdownMessage(markdownContent, MarketType.US);
     }
 
-    @Async("notificationExecutor")
     public CompletableFuture<Boolean> sendMarkdownMessageAsync(String markdownContent) {
         return sendMarkdownMessageAsync(markdownContent, MarketType.US);
     }
@@ -206,9 +229,12 @@ public class WeComApi {
         }
     }
 
-    @Async("notificationExecutor")
     public CompletableFuture<Boolean> sendTextMessageAsync(String textContent, MarketType marketType) {
-        return CompletableFuture.completedFuture(sendMessage(textContent, "text", marketType));
+        List<String> preparedContents = prepareContentsForSend(textContent, "text", marketType);
+        return CompletableFuture.supplyAsync(
+                () -> sendPreparedContents(preparedContents, "text", marketType),
+                notificationExecutor
+        );
     }
 
     /**
@@ -220,20 +246,21 @@ public class WeComApi {
         sendTextMessage(textContent, MarketType.US);
     }
 
-    @Async("notificationExecutor")
     public CompletableFuture<Boolean> sendTextMessageAsync(String textContent) {
         return sendTextMessageAsync(textContent, MarketType.US);
     }
 
     private boolean sendMessage(String content, String messageType, MarketType marketType) {
+        return sendPreparedContents(prepareContentsForSend(content, messageType, marketType), messageType, marketType);
+    }
+
+    private boolean sendPreparedContents(List<String> finalContents, String messageType, MarketType marketType) {
         String webhookUrl = getWebhookUrl(marketType);
         if (webhookUrl == null || webhookUrl.isBlank()) {
             log.warn("企业微信 webhook URL 未配置（市场: {}），跳过发送", marketType);
             return false;
         }
-
         try {
-            List<String> finalContents = prepareContentsForSend(content, messageType, marketType);
             for (int i = 0; i < finalContents.size(); i++) {
                 String finalContent = finalContents.get(i);
                 HttpHeaders headers = new HttpHeaders();
@@ -281,28 +308,38 @@ public class WeComApi {
      */
     public String formatAStockInfo(AStockMsg aStockMsg) {
         StringBuilder builder = new StringBuilder()
-                .append("<font color=\"info\">📌 代码：</font>").append(aStockMsg.getStockCode()).append("\n")
-                .append("<font color=\"info\">🏢 名称：</font>").append(aStockMsg.getStockName()).append("\n")
-                .append("<font color=\"comment\">📅 时间：</font>").append(aStockMsg.getPubDate()).append("\n")
-                .append("<font color=\"comment\">📰 标题：</font>").append(aStockMsg.getTitle()).append("\n")
-                .append("<font color=\"warning\">🏷️ 类型：</font>").append(aStockMsg.getTag()).append("\n")
-                .append("<font color=\"comment\">🧭 事件：</font>").append(aStockMsg.getEventType())
-                .append(" / ").append(aStockMsg.getSignalSide()).append("\n")
-                .append("<font color=\"comment\">🎯 评分：</font>").append(aStockMsg.getSignalScore()).append(" 分\n");
+                .append("<font color=\"info\">📌 ").append(pushLanguageService.text("代码", "Ticker")).append("：</font>").append(aStockMsg.getStockCode()).append("\n")
+                .append("<font color=\"info\">🏢 ").append(pushLanguageService.text("名称", "Name")).append("：</font>").append(aStockMsg.getStockName()).append("\n")
+                .append("<font color=\"comment\">📅 ").append(pushLanguageService.text("时间", "Time")).append("：</font>").append(aStockMsg.getPubDate()).append("\n")
+                .append("<font color=\"comment\">📰 ").append(pushLanguageService.text("标题", "Headline")).append("：</font>").append(aStockMsg.getTitle()).append("\n")
+                .append("<font color=\"warning\">🏷️ ").append(pushLanguageService.text("类型", "Type")).append("：</font>").append(aStockMsg.getTag()).append("\n")
+                .append("<font color=\"comment\">🧭 ").append(pushLanguageService.text("事件", "Event")).append("：</font>")
+                .append(pushLanguageService.eventType(aStockMsg.getEventType()))
+                .append(" / ").append(pushLanguageService.signalSideLabel(aStockMsg.getSignalSide())).append("\n")
+                .append("<font color=\"comment\">🎯 ").append(pushLanguageService.text("评分", "Score")).append("：</font>")
+                .append(aStockMsg.getSignalScore()).append(pushLanguageService.text(" 分\n", "\n"));
 
         if (aStockMsg.getBatchNoticeCount() != null && aStockMsg.getBatchNoticeCount() > 1) {
-            builder.append("<font color=\"comment\">📎 本轮命中：</font>")
-                    .append(aStockMsg.getBatchNoticeCount()).append("条\n");
+            builder.append("<font color=\"comment\">📎 ")
+                    .append(pushLanguageService.text("本轮命中", "Matches in this batch"))
+                    .append("：</font>")
+                    .append(aStockMsg.getBatchNoticeCount())
+                    .append(pushLanguageService.text("条\n", "\n"));
         }
         if (aStockMsg.getRelatedTitles() != null && !aStockMsg.getRelatedTitles().isBlank()) {
-            builder.append("<font color=\"comment\">🗂️ 其他标题：</font>")
+            builder.append("<font color=\"comment\">🗂️ ")
+                    .append(pushLanguageService.text("其他标题", "Other headlines"))
+                    .append("：</font>")
                     .append(aStockMsg.getRelatedTitles()).append("\n");
         }
 
-        builder.append("<font color=\"comment\">📊 支撑：</font>24小时公告=")
-                .append(aStockMsg.getCounts24Hour()).append("条; ")
-                .append("3天内公告=").append(aStockMsg.getCounts3Day()).append("条; ")
-                .append("1周内公告=").append(aStockMsg.getCounts1Week()).append("条");
+        builder.append("<font color=\"comment\">📊 ")
+                .append(pushLanguageService.text("支撑", "Support"))
+                .append("：</font>")
+                .append(pushLanguageService.text("24小时公告=", "24h notices="))
+                .append(aStockMsg.getCounts24Hour()).append(pushLanguageService.text("条; ", "; "))
+                .append(pushLanguageService.text("3天内公告=", "3d notices=")).append(aStockMsg.getCounts3Day()).append(pushLanguageService.text("条; ", "; "))
+                .append(pushLanguageService.text("1周内公告=", "1w notices=")).append(aStockMsg.getCounts1Week()).append(pushLanguageService.text("条", ""));
         return builder.toString();
     }
 
@@ -313,7 +350,7 @@ public class WeComApi {
      */
     public String formatAStockInfoFromList(List<AStockMsg> stocks) {
         if (stocks == null || stocks.isEmpty()) {
-            return "暂无A股公告信息";
+            return pushLanguageService.text("暂无A股公告信息", "No A-stock notice alerts available");
         }
 
         return stocks.stream()
@@ -326,58 +363,83 @@ public class WeComApi {
      */
     public String formatAStockRealtimeAlert(AStockRealtimeAlertCard card) {
         if (card == null) {
-            return "暂无A股实时预警";
+            return pushLanguageService.text("暂无A股实时预警", "No A-stock intraday alert");
         }
 
         boolean riskAlert = card.getPushType() != null && card.getPushType().name().contains("RISK");
+        String defaultState = pushLanguageService.text("中性", "Neutral");
+        String severityLabel = StringUtils.defaultIfBlank(card.getSeverityLabel(), riskAlert
+                ? pushLanguageService.text("高优先级风险", "High-Priority Risk")
+                : pushLanguageService.text("高优先级机会", "High-Priority Opportunity"));
+        String eventType = pushLanguageService.eventType(card.getEventType());
+        String positionLabel = pushLanguageService.positionLabel(card.getPositionLabel());
+        String positionReason = pushLanguageService.translatePositionReason(card.getPositionReason());
+        String relationReason = pushLanguageService.translateRelationReason(card.getRelationReason());
+        String titleLineLabel = pushLanguageService.text("核心公告", "Core Notice");
+        String tradeActionLabel = pushLanguageService.text("交易动作", "Trade Action");
 
         StringBuilder builder = new StringBuilder()
-                .append("# ").append(card.getEmoji()).append(" A股盘中")
-                .append(riskAlert ? "风险预警" : "突发预警")
+                .append("# ").append(card.getEmoji()).append(" ")
+                .append(pushLanguageService.text(
+                        "A股盘中" + (riskAlert ? "风险预警" : "突发预警"),
+                        riskAlert ? "A-Stock Intraday Risk Alert" : "A-Stock Intraday Breakout Alert"
+                ))
                 .append("\n\n")
-                .append("> **标的**：").append(card.getStockName()).append("(").append(card.getStockCode()).append(")\n")
-                .append("> **市场状态**：").append(card.getMarketStateLabel() != null ? card.getMarketStateLabel() : "中性").append("\n")
-                .append("> **定性**：<font color=\"")
+                .append("> **").append(pushLanguageService.text("标的", "Ticker")).append("**：")
+                .append(card.getStockName()).append("(").append(card.getStockCode()).append(")\n")
+                .append("> **").append(pushLanguageService.text("市场状态", "Market Regime")).append("**：")
+                .append(card.getMarketStateLabel() != null ? card.getMarketStateLabel() : defaultState).append("\n")
+                .append("> **").append(pushLanguageService.text("定性", "Severity")).append("**：<font color=\"")
                 .append(riskAlert ? "warning" : "info")
-                .append("\">").append(card.getSeverityLabel()).append("</font>")
-                .append(" | ").append(card.getEventType()).append(" | ").append(card.getSignalScore()).append(" 分\n")
-                .append("> **核心公告**：").append(card.getTitle()).append("\n")
-                .append("> **结论**：").append(card.getConclusion()).append("\n")
-                .append("> **推演**：").append(card.getReasoning()).append("\n");
+                .append("\">").append(severityLabel).append("</font>")
+                .append(" | ").append(eventType).append(" | ").append(card.getSignalScore())
+                .append(pushLanguageService.text(" 分\n", "\n"))
+                .append("> **").append(titleLineLabel).append("**：").append(card.getTitle()).append("\n")
+                .append("> **").append(pushLanguageService.text("结论", "Conclusion")).append("**：").append(card.getConclusion()).append("\n")
+                .append("> **").append(pushLanguageService.text("推演", "Reasoning")).append("**：").append(card.getReasoning()).append("\n");
 
         if (!riskAlert && card.getPositionLabel() != null && !card.getPositionLabel().isBlank()) {
-            builder.append("> **身位判定**：<font color=\"")
+            builder.append("> **").append(pushLanguageService.text("身位判定", "Positioning")).append("**：<font color=\"")
                     .append(card.getPositionColorTag())
-                    .append("\">").append(card.getPositionLabel()).append("</font>");
-            if (card.getPositionReason() != null && !card.getPositionReason().isBlank()) {
-                builder.append(" | ").append(card.getPositionReason());
+                    .append("\">").append(positionLabel).append("</font>");
+            if (StringUtils.isNotBlank(positionReason)) {
+                builder.append(" | ").append(positionReason);
             }
             builder.append("\n");
         }
 
         if (card.getMacroThemeName() != null && !card.getMacroThemeName().isBlank()) {
-            builder.append("> **主线共振**：【").append(card.getMacroThemeName()).append("】");
+            builder.append("> **").append(pushLanguageService.text("主线共振", "Theme Resonance")).append("**：【")
+                    .append(card.getMacroThemeName()).append("】");
             if (card.getMacroSignalScore() != null && card.getMacroSignalScore() > 0) {
-                builder.append("（主题分 ").append(card.getMacroSignalScore()).append("）");
+                builder.append(pushLanguageService.text("（主题分 ", " (Theme Score "))
+                        .append(card.getMacroSignalScore()).append(pushLanguageService.text("）", ")"));
             }
             if (card.getResonanceScore() != null && card.getResonanceScore() > 0) {
-                builder.append("，融合分 ").append(card.getResonanceScore());
+                builder.append(pushLanguageService.text("，融合分 ", ", Fusion Score "))
+                        .append(card.getResonanceScore());
             }
             builder.append("\n");
-            if (card.getRelationReason() != null && !card.getRelationReason().isBlank()) {
-                builder.append("> **共振依据**：").append(card.getRelationReason()).append("\n");
+            if (StringUtils.isNotBlank(relationReason)) {
+                builder.append("> **").append(pushLanguageService.text("共振依据", "Why It Resonates")).append("**：")
+                        .append(relationReason).append("\n");
             }
             if (card.getMacroTitle() != null && !card.getMacroTitle().isBlank()) {
-                builder.append("> **主题快讯**：").append(card.getMacroTitle()).append("\n");
+                builder.append("> **").append(pushLanguageService.text("主题快讯", "Macro Trigger")).append("**：")
+                        .append(card.getMacroTitle()).append("\n");
             }
         }
 
         if (!riskAlert && card.getTradeHint() != null && !card.getTradeHint().isBlank()) {
-            builder.append("> **交易动作**：").append(card.getTradeHint()).append("\n");
+            builder.append("> **").append(tradeActionLabel).append("**：")
+                    .append(pushLanguageService.translateTradeHint(card.getTradeHint())).append("\n");
         }
 
-        builder.append("> **提醒**：").append(card.getRiskHint()).append("\n\n")
-                .append("<font color=\"comment\">仅供盘中研究与信息跟踪，不构成任何投资建议。</font>");
+        builder.append("> **").append(pushLanguageService.text("提醒", "Reminder")).append("**：")
+                .append(card.getRiskHint()).append("\n\n")
+                .append("<font color=\"comment\">")
+                .append(pushLanguageService.text("仅供盘中研究与信息跟踪，不构成任何投资建议。", "For intraday research and information tracking only. Not investment advice."))
+                .append("</font>");
         return builder.toString();
     }
 
@@ -490,10 +552,14 @@ public class WeComApi {
         for (String line : content.split("\n")) {
             String trimmed = line.trim();
             if (trimmed.startsWith("💡")
+                    || trimmed.startsWith("Deep Dive")
+                    || trimmed.startsWith("Position Check")
+                    || trimmed.startsWith("Tip:")
                     || trimmed.startsWith("AI 深度查股")
                     || trimmed.startsWith("持仓深度体检")
                     || trimmed.startsWith("👉")
-                    || trimmed.contains("免责声明")) {
+                    || trimmed.contains("免责声明")
+                    || trimmed.toLowerCase().contains("disclaimer")) {
                 dropTail = true;
             }
             if (!dropTail) {
@@ -511,7 +577,7 @@ public class WeComApi {
     }
 
     private String truncateMarkdownByBytes(String content, int maxBytes) {
-        String notice = MARKDOWN_TRUNCATION_NOTICE;
+        String notice = pushLanguageService.text("\n\n[内容过长，已截断]", "\n\n[Content truncated]");
         int noticeBytes = utf8Length(notice);
         int budget = Math.max(0, maxBytes - noticeBytes);
 
@@ -647,7 +713,7 @@ public class WeComApi {
         if (partIndex == 1 && !document.introLines().isEmpty()) {
             builder.append(String.join("\n", document.introLines())).append("\n\n");
         } else if (partIndex > 1) {
-            builder.append("以下为续篇：\n\n");
+            builder.append(pushLanguageService.text("以下为续篇：", "Continued below:")).append("\n\n");
         }
         for (MarkdownSection section : sections) {
             builder.append(renderSection(section)).append("\n\n");

@@ -56,3 +56,8 @@ management:
       probes:
         enabled: true
       show-details: never
+
+a:
+  stock:
+    mcp:
+      language: ${A_STOCK_MCP_LANGUAGE:en}

@@ -85,6 +85,41 @@ class WeComApiTest {
     }
 
     @Test
+    void formatAStockRealtimeAlertShouldRenderEnglishWhenLanguageSwitchOn() {
+        WeComApi weComApi = new WeComApi(mock(RestTemplate.class), new PushLanguageService("en"));
+        AStockRealtimeAlertCard card = new AStockRealtimeAlertCard();
+        card.setStockCode("300121");
+        card.setStockName("阳谷华泰");
+        card.setPushType(AStockPushType.REALTIME_OPPORTUNITY);
+        card.setSeverityLabel("Critical Catalyst");
+        card.setSignalScore(93);
+        card.setEventType("重大合同");
+        card.setTitle("阳谷华泰:关于中标8亿元无人机复材订单的公告");
+        card.setMarketStateLabel("Risk-On");
+        card.setPositionLabel("Leading Core");
+        card.setPositionReason("Event score reached main-theme tier; matched macro-theme resonance");
+        card.setTradeHint("Can serve as a main-theme anchor; focus on opening support.");
+        card.setConclusion("Yanggu Huatai just released a strong catalyst.");
+        card.setReasoning("Major contracts can directly lift order expectations.");
+        card.setRiskHint("Bullish alerts do not guarantee limit-up moves.");
+        card.setMacroThemeName("低空经济");
+        card.setMacroTitle("低空飞行基础设施建设提速");
+        card.setMacroSignalScore(90);
+        card.setResonanceScore(148);
+        card.setRelationReason("The notice directly hits the active macro theme");
+
+        String content = weComApi.formatAStockRealtimeAlert(card);
+
+        assertTrue(content.contains("A-Stock Intraday Breakout Alert"));
+        assertTrue(content.contains("Market Regime"));
+        assertTrue(content.contains("Positioning"));
+        assertTrue(content.contains("Trade Action"));
+        assertTrue(content.contains("Theme Resonance"));
+        assertTrue(content.contains("Fusion Score 148"));
+        assertTrue(content.contains("Not investment advice"));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void sendMarkdownMessageAsyncShouldSplitLargeMarkdownIntoMultipleMessages() throws ExecutionException, InterruptedException {
         RestTemplate restTemplate = mock(RestTemplate.class);
@@ -182,6 +217,77 @@ class WeComApiTest {
         assertTrue(sentContent.getBytes(StandardCharsets.UTF_8).length <= 4096);
         assertFalse(sentContent.contains("免责声明"));
         assertTrue(sentContent.contains("[内容过长，已截断]"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void sendMarkdownMessageAsyncShouldUseEnglishTruncationNoticeWhenLanguageSwitchOn() throws ExecutionException, InterruptedException {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        WeComApi weComApi = new WeComApi(restTemplate, new PushLanguageService("en"));
+        ReflectionTestUtils.setField(weComApi, "webhookUrlA", "https://example.com/wecom");
+        when(restTemplate.postForObject(org.mockito.ArgumentMatchers.eq("https://example.com/wecom"),
+                org.mockito.ArgumentMatchers.any(HttpEntity.class), org.mockito.ArgumentMatchers.eq(String.class)))
+                .thenReturn("{\"errcode\":0,\"errmsg\":\"ok\"}");
+
+        String longMarkdown = """
+                # A-Stock Post-Close Decode | 2026-03-16
+
+                ## Risk Board
+                """ +
+                ("""
+                > 1. *ST熊猫 (600599) | 🇨🇳 Stock
+                > Session Heat: very high and still expanding after multiple risk notices.
+                > Price Action Decode: The company kept releasing risk prompts, delisting-related notices, and balance-sheet stress reminders throughout the session, which kept defensive pressure elevated into the close.
+                """.repeat(18));
+
+        assertTrue(longMarkdown.getBytes(StandardCharsets.UTF_8).length > 4096);
+        assertTrue(weComApi.sendMarkdownMessageAsync(longMarkdown, WeComApi.MarketType.A).get());
+
+        ArgumentCaptor<HttpEntity<Map<String, Object>>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForObject(org.mockito.ArgumentMatchers.eq("https://example.com/wecom"),
+                captor.capture(), org.mockito.ArgumentMatchers.eq(String.class));
+        Map<String, Object> requestBody = captor.getValue().getBody();
+        Map<String, Object> markdownBody = (Map<String, Object>) requestBody.get("markdown");
+        String sentContent = String.valueOf(markdownBody.get("content"));
+
+        assertTrue(sentContent.contains("[Content truncated]"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void sendMarkdownMessageAsyncShouldRespectRequestLanguageOverrideWhenDefaultConfigIsChinese() throws ExecutionException, InterruptedException {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        PushLanguageService pushLanguageService = new PushLanguageService("zh");
+        WeComApi weComApi = new WeComApi(restTemplate, pushLanguageService);
+        ReflectionTestUtils.setField(weComApi, "webhookUrlA", "https://example.com/wecom");
+        when(restTemplate.postForObject(org.mockito.ArgumentMatchers.eq("https://example.com/wecom"),
+                org.mockito.ArgumentMatchers.any(HttpEntity.class), org.mockito.ArgumentMatchers.eq(String.class)))
+                .thenReturn("{\"errcode\":0,\"errmsg\":\"ok\"}");
+
+        String longMarkdown = """
+                # A-Stock Post-Close Decode | 2026-03-16
+
+                ## Risk Board
+                """ +
+                ("""
+                > 1. *ST熊猫 (600599) | 🇨🇳 Stock
+                > Session Heat: very high and still expanding after multiple risk notices.
+                > Price Action Decode: The company kept releasing risk prompts, delisting-related notices, and balance-sheet stress reminders throughout the session, which kept defensive pressure elevated into the close.
+                """.repeat(18));
+
+        assertTrue(longMarkdown.getBytes(StandardCharsets.UTF_8).length > 4096);
+        assertTrue(pushLanguageService.withLanguage("en",
+                () -> weComApi.sendMarkdownMessageAsync(longMarkdown, WeComApi.MarketType.A)).get());
+
+        ArgumentCaptor<HttpEntity<Map<String, Object>>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForObject(org.mockito.ArgumentMatchers.eq("https://example.com/wecom"),
+                captor.capture(), org.mockito.ArgumentMatchers.eq(String.class));
+        Map<String, Object> requestBody = captor.getValue().getBody();
+        Map<String, Object> markdownBody = (Map<String, Object>) requestBody.get("markdown");
+        String sentContent = String.valueOf(markdownBody.get("content"));
+
+        assertTrue(sentContent.contains("[Content truncated]"));
+        assertFalse(sentContent.contains("[内容过长，已截断]"));
     }
 
     @Test

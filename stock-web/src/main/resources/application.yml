@@ -67,6 +67,8 @@ stock:
     # 当前阶段聚焦 A 股，先关闭所有美股推送（晨报/夜报/实时异动）。
     # 如需恢复，改为 true 即可。
     us-enabled: false
+    # 企业微信推送语言：zh=中文，en=英文。切换后会同时影响实时告警、健康告警和早晚报文案。
+    language: en
   filter:
     # 异动频次阈值 - 24小时内同一标的出现次数低于此值将被过滤
     # 默认10次，建议生产环境保持10-15次
@@ -127,6 +129,28 @@ stock:
     market-overheat-limit-up-threshold: 80
     # 市场脉冲推送冷却时间：避免同一状态在短时间内反复打扰
     market-pulse-cooldown-minutes: 20
+    # 宏观级/情绪级家族冷却时间：同向市场脉冲与宏观预警在窗口内只允许发一次
+    market-alert-family-cooldown-minutes: 120
+    # 市场状态最短驻留时间：避免 10-30 分钟内来回切换牛熊
+    market-state-family-min-dwell-minutes: 60
+    # 防守态确认窗口：连续走弱一段时间后才真正切入防守态
+    market-state-defensive-confirm-minutes: 15
+    # 中性态确认窗口：防止状态刚松动就马上退出强趋势
+    market-state-neutral-confirm-minutes: 20
+    # 进攻态确认窗口：只在做多环境连续扩散后才确认进攻态
+    market-state-risk-on-confirm-minutes: 30
+    # 高潮态确认窗口：情绪沸腾必须连续长时间维持才允许确认
+    market-state-overheat-confirm-minutes: 120
+    # 状态确认最小样本数：避免低样本误判
+    market-state-confirm-min-observations: 3
+    # 状态确认比例：窗口内至少达到该占比才视为状态成立
+    market-state-confirm-ratio: 0.70
+    # 极端风险强制切换：任一核心指数单边跳水达到该阈值时允许直接翻空
+    market-panic-index-drop-threshold: -3.0
+    # 极端风险强制切换：跌停扩散达到该阈值时允许直接翻空
+    market-panic-limit-down-threshold: 150
+    # 极端风险强制切换：上涨家数占比低于该阈值时允许直接翻空
+    market-panic-breadth-threshold: 0.25
     # 实时链路健康巡检窗口：过去这段时间内“有事件但没出声”或“状态机已退化”都会被识别为健康风险
     realtime-health-window-minutes: 120
     # 高分公告健康阈值：超过该数量且 0 条已发送时触发健康告警

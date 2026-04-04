@@ -64,7 +64,7 @@ public class OpsDashboardController {
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("message", checkResult != null && checkResult.isAlertTriggered()
-                ? (checkResult.isPushed() ? "健康告警已触发并推送" : "健康告警已触发，但命中冷却或无需重复发送")
+                ? "健康巡检发现异常，结果已保留，不再推送企业微信"
                 : "健康巡检完成，当前未触发健康告警");
         result.put("data", checkResult);
         return result;

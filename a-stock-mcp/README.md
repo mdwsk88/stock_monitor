@@ -42,8 +42,11 @@
 
 - 企业微信系统提示词（直接复制纯文本）：[wecom-robot-system-prompt.txt](docs/wecom-robot-system-prompt.txt)
 - 企业微信系统提示词说明页：[wecom-robot-system-prompt.md](docs/wecom-robot-system-prompt.md)
+- 企业微信系统提示词英文版（直接复制纯文本）：[wecom-robot-system-prompt-en.txt](docs/wecom-robot-system-prompt-en.txt)
+- 企业微信系统提示词英文说明页：[wecom-robot-system-prompt-en.md](docs/wecom-robot-system-prompt-en.md)
 - 系统提示词模板：[wecom-a-stock-robot-system-prompt.md](src/main/resources/prompts/wecom-a-stock-robot-system-prompt.md)
 - 群公告文档：[wecom-group-announcement.md](docs/wecom-group-announcement.md)
+- 群公告文档英文版：[wecom-group-announcement-en.md](docs/wecom-group-announcement-en.md)
 - 外层边界控制实施方案：[wecom-boundary-control-plan.md](docs/wecom-boundary-control-plan.md)
 
 ## MCP 端点

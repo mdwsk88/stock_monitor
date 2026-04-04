@@ -147,6 +147,19 @@
             transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
         }
 
+        .button-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+            border-radius: 999px;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 700;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+        }
+
         button.primary {
             background: var(--ink);
             color: #fffaf3;
@@ -159,7 +172,14 @@
             border: 1px solid rgba(29, 36, 33, 0.08);
         }
 
-        button:hover {
+        .button-link.secondary {
+            background: rgba(255, 255, 255, 0.64);
+            color: var(--ink);
+            border: 1px solid rgba(29, 36, 33, 0.08);
+        }
+
+        button:hover,
+        .button-link:hover {
             transform: translateY(-1px);
         }
 
@@ -533,6 +553,7 @@
             <button class="secondary" id="refreshMarketBtn">刷新市场快照</button>
             <button class="secondary" id="healthCheckBtn">触发健康巡检</button>
             <button class="secondary" id="macroScanBtn">触发宏观回扫</button>
+            <a class="button-link secondary" href="/manual-push-console.html">打开手动测试台</a>
         </div>
     </section>
 

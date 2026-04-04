@@ -15,8 +15,10 @@ import java.time.LocalDateTime;
 public class MarketSnapshot {
 
     private MarketState marketState = MarketState.NEUTRAL;
+    private MarketState rawMarketState = MarketState.NEUTRAL;
     private MarketSnapshotHealth snapshotHealth = MarketSnapshotHealth.LIVE;
     private LocalDateTime capturedAt;
+    private LocalDateTime stateConfirmedAt;
     private LocalDateTime lastSuccessAt;
     private LocalDateTime lastFailureAt;
     private LocalDateTime nextRetryAt;
@@ -38,8 +40,10 @@ public class MarketSnapshot {
     public static MarketSnapshot neutral(LocalDateTime capturedAt, String source) {
         MarketSnapshot snapshot = new MarketSnapshot();
         snapshot.setMarketState(MarketState.NEUTRAL);
+        snapshot.setRawMarketState(MarketState.NEUTRAL);
         snapshot.setSnapshotHealth(MarketSnapshotHealth.LIVE);
         snapshot.setCapturedAt(capturedAt);
+        snapshot.setStateConfirmedAt(capturedAt);
         snapshot.setLastSuccessAt(capturedAt);
         snapshot.setSource(source);
         return snapshot;

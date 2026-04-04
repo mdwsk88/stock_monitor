@@ -13,9 +13,11 @@ import com.dawei.entity.MarketSnapshot;
 import com.dawei.service.AStockPushDecisionLogService;
 import com.dawei.service.MarketStateService;
 import com.dawei.service.AStockPushLogService;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -41,6 +43,7 @@ public class AStockRealtimePushService {
     private final MarketStateService marketStateService;
     private final WeComApi weComApi;
     private final StockFilterConfig filterConfig;
+    private final PushLanguageService pushLanguageService;
 
     public AStockRealtimePushService(AStockPushPolicyService aStockPushPolicyService,
                                      AStockRealtimeContextService aStockRealtimeContextService,
@@ -50,6 +53,21 @@ public class AStockRealtimePushService {
                                      MarketStateService marketStateService,
                                      WeComApi weComApi,
                                      StockFilterConfig filterConfig) {
+        this(aStockPushPolicyService, aStockRealtimeContextService, aReportOpportunityInsightService,
+                aStockPushDecisionLogService, aStockPushLogService, marketStateService, weComApi,
+                filterConfig, new PushLanguageService());
+    }
+
+    @Autowired
+    public AStockRealtimePushService(AStockPushPolicyService aStockPushPolicyService,
+                                     AStockRealtimeContextService aStockRealtimeContextService,
+                                     AReportOpportunityInsightService aReportOpportunityInsightService,
+                                     AStockPushDecisionLogService aStockPushDecisionLogService,
+                                     AStockPushLogService aStockPushLogService,
+                                     MarketStateService marketStateService,
+                                     WeComApi weComApi,
+                                     StockFilterConfig filterConfig,
+                                     PushLanguageService pushLanguageService) {
         this.aStockPushPolicyService = aStockPushPolicyService;
         this.aStockRealtimeContextService = aStockRealtimeContextService;
         this.aReportOpportunityInsightService = aReportOpportunityInsightService;
@@ -58,6 +76,7 @@ public class AStockRealtimePushService {
         this.marketStateService = marketStateService;
         this.weComApi = weComApi;
         this.filterConfig = filterConfig;
+        this.pushLanguageService = pushLanguageService;
     }
 
     public boolean handleSavedNotice(AStockRss notice) {
@@ -143,12 +162,12 @@ public class AStockRealtimePushService {
         card.setSeverityLabel(resolveSeverityLabel(safeInt(notice.getSignalScore()), decision.getPushType()));
         card.setSignalSide(notice.getSignalSide());
         card.setSignalScore(notice.getSignalScore());
-        card.setEventType(notice.getEventType());
+        card.setEventType(pushLanguageService.eventType(notice.getEventType()));
         card.setTitle(notice.getTitle());
         card.setMarketStateLabel(resolveMarketStateLabel(marketSnapshot));
-        card.setPositionLabel(opportunityInsight != null ? opportunityInsight.getPositionLabel() : null);
-        card.setPositionReason(opportunityInsight != null ? opportunityInsight.getPositionReason() : null);
-        card.setTradeHint(opportunityInsight != null ? opportunityInsight.getTradeHint() : null);
+        card.setPositionLabel(opportunityInsight != null ? pushLanguageService.positionLabel(opportunityInsight.getPositionLabel()) : null);
+        card.setPositionReason(opportunityInsight != null ? pushLanguageService.translatePositionReason(opportunityInsight.getPositionReason()) : null);
+        card.setTradeHint(opportunityInsight != null ? pushLanguageService.translateTradeHint(opportunityInsight.getTradeHint()) : null);
         card.setConclusion(buildConclusion(notice, decision, context, opportunityInsight, marketSnapshot));
         card.setReasoning(buildReasoning(notice, context, opportunityInsight));
         card.setRiskHint(buildRiskHint(notice, decision, opportunityInsight, now, marketSnapshot));
@@ -156,7 +175,7 @@ public class AStockRealtimePushService {
         card.setMacroTitle(context.getMacroTitle());
         card.setMacroSignalScore(context.getMacroSignalScore());
         card.setResonanceScore(context.getResonanceScore());
-        card.setRelationReason(context.getRelationReason());
+        card.setRelationReason(pushLanguageService.translateRelationReason(context.getRelationReason()));
         return card;
     }
 
@@ -172,41 +191,49 @@ public class AStockRealtimePushService {
         String stock = notice.getStockName() + "(" + notice.getStockCode() + ")";
         String base = switch (decision.getPushType()) {
             case REALTIME_OPPORTUNITY -> buildOpportunityConclusion(stock, context, opportunityInsight, marketSnapshot);
-            case REALTIME_RISK -> stock + " 刚触发高等级风险公告，属于盘中需要优先规避的负面催化。";
-            default -> stock + " 当前无实时推送结论。";
+            case REALTIME_RISK -> pushLanguageService.text(
+                    stock + " 刚触发高等级风险公告，属于盘中需要优先规避的负面催化。",
+                    stock + " just triggered a high-severity risk notice and should be treated as a negative catalyst to avoid intraday."
+            );
+            default -> pushLanguageService.text(stock + " 当前无实时推送结论。", stock + " currently has no realtime push conclusion.");
         };
         if (decision.getPushType() != AStockPushType.REALTIME_OPPORTUNITY && context.hasResonance()) {
-            return base + " 且与【" + context.getThemeName() + "】主线形成共振。";
+            return base + pushLanguageService.text(" 且与【", " It also resonates with the active macro theme 【")
+                    + context.getThemeName() + "】" + pushLanguageService.text("主线形成共振。", ".");
         }
         if (decision.getPushType() == AStockPushType.REALTIME_OPPORTUNITY) {
             return base;
         }
-        return base + " 暂未检测到明确主线共振。";
+        return base + pushLanguageService.text(" 暂未检测到明确主线共振。", " No clear macro-theme resonance has been detected yet.");
     }
 
     private String buildReasoning(AStockRss notice,
                                   AStockRealtimeContext context,
                                   AReportOpportunityInsight opportunityInsight) {
         String eventHint = switch (StringUtils.defaultString(notice.getEventType())) {
-            case "重大合同" -> "重大合同/中标通常直接抬升订单兑现预期，盘中更容易触发资金抢筹。";
-            case "并购重组" -> "并购重组会重估资产与控制权预期，若进度实质推进，短线弹性通常较强。";
-            case "业绩兑现" -> "业绩兑现会快速修正市场预期差，是资金最容易理解的基本面催化。";
-            case "产品获批" -> "获批/认证意味着商业化预期改善，若叠加主线，容易强化情绪。";
-            case "回购增持" -> "回购或增持传递管理层态度改善，但强度一般弱于订单和并购。";
-            case "退市风险" -> "退市类公告会迅速压制风险偏好，短线资金通常优先撤退。";
-            case "监管处罚" -> "立案/处罚显著提升监管不确定性，容易形成快速杀估值。";
-            case "重整风险" -> "重整/破产会影响资产与交易连续性，属于高等级风险事件。";
-            case "司法处置" -> "司法拍卖或强制处置通常伴随控制权与流动性风险。";
-            case "诉讼仲裁" -> "重大诉讼仲裁会抬升赔偿和经营不确定性，短线偏负面。";
-            case "业绩承压" -> "预亏和减值会压制盈利预期与估值锚。";
-            default -> "该公告被规则识别为高分事件，具备盘中跟踪价值。";
+            case "重大合同" -> pushLanguageService.text("重大合同/中标通常直接抬升订单兑现预期，盘中更容易触发资金抢筹。", "Major contracts and winning bids usually lift order-delivery expectations directly and can trigger intraday momentum buying.");
+            case "并购重组" -> pushLanguageService.text("并购重组会重估资产与控制权预期，若进度实质推进，短线弹性通常较强。", "M&A and restructuring can reprice asset and control expectations; if the process advances materially, short-term trading elasticity is usually strong.");
+            case "业绩兑现" -> pushLanguageService.text("业绩兑现会快速修正市场预期差，是资金最容易理解的基本面催化。", "Earnings delivery can quickly reset market expectations and is one of the easiest fundamental catalysts for capital to understand.");
+            case "产品获批" -> pushLanguageService.text("获批/认证意味着商业化预期改善，若叠加主线，容易强化情绪。", "Approval or certification improves commercialization expectations and can strengthen sentiment when aligned with an active theme.");
+            case "回购增持" -> pushLanguageService.text("回购或增持传递管理层态度改善，但强度一般弱于订单和并购。", "Buybacks and insider increases signal improving management confidence, although they are usually weaker than contracts or M&A.");
+            case "退市风险" -> pushLanguageService.text("退市类公告会迅速压制风险偏好，短线资金通常优先撤退。", "Delisting-related notices quickly crush risk appetite and short-term capital usually exits first.");
+            case "监管处罚" -> pushLanguageService.text("立案/处罚显著提升监管不确定性，容易形成快速杀估值。", "Investigations and penalties materially raise regulatory uncertainty and can trigger fast de-rating.");
+            case "重整风险" -> pushLanguageService.text("重整/破产会影响资产与交易连续性，属于高等级风险事件。", "Restructuring or bankruptcy affects asset continuity and trading continuity, making it a high-severity risk event.");
+            case "司法处置" -> pushLanguageService.text("司法拍卖或强制处置通常伴随控制权与流动性风险。", "Judicial auctions or forced disposals usually come with control risk and liquidity risk.");
+            case "诉讼仲裁" -> pushLanguageService.text("重大诉讼仲裁会抬升赔偿和经营不确定性，短线偏负面。", "Major litigation or arbitration raises compensation and operating uncertainty and is usually negative in the short term.");
+            case "业绩承压" -> pushLanguageService.text("预亏和减值会压制盈利预期与估值锚。", "Guidance misses and impairments pressure earnings expectations and valuation anchors.");
+            default -> pushLanguageService.text("该公告被规则识别为高分事件，具备盘中跟踪价值。", "This notice was flagged as a high-score event by the rules engine and is worth tracking intraday.");
         };
         StringBuilder reasoning = new StringBuilder(eventHint);
         if (opportunityInsight != null && StringUtils.isNotBlank(opportunityInsight.getPositionReason())) {
-            reasoning.append(" 身位判定：").append(opportunityInsight.getPositionReason()).append("。");
+            reasoning.append(pushLanguageService.text(" 身位判定：", " Positioning: "))
+                    .append(pushLanguageService.translatePositionReason(opportunityInsight.getPositionReason()))
+                    .append(pushLanguageService.text("。", "."));
         }
         if (context.hasResonance()) {
-            reasoning.append(" 同时主题上下文显示【").append(context.getThemeName()).append("】正在活跃，强化了资金关注度。");
+            reasoning.append(pushLanguageService.text(" 同时主题上下文显示【", " The theme context also shows 【"))
+                    .append(context.getThemeName()).append("】")
+                    .append(pushLanguageService.text("正在活跃，强化了资金关注度。", " is active, which strengthens capital attention."));
         }
         return reasoning.toString();
     }
@@ -217,22 +244,30 @@ public class AStockRealtimePushService {
                                  LocalDateTime now,
                                  MarketSnapshot marketSnapshot) {
         String sideHint = decision.getPushType() == AStockPushType.REALTIME_RISK
-                ? "风险预警不等于立即跌停，但说明负面信息正在加速释放。"
+                ? pushLanguageService.text("风险预警不等于立即跌停，但说明负面信息正在加速释放。", "A risk alert does not guarantee an immediate limit-down move, but it does mean negative information is accelerating into the tape.")
                 : buildOpportunityHint(opportunityInsight, marketSnapshot);
         String marketHint = marketSnapshot != null && marketSnapshot.getMarketState() != null
-                ? " 当前市场状态：" + marketSnapshot.getMarketState().getLabel() + "。"
+                ? pushLanguageService.text(" 当前市场状态：", " Current market regime: ")
+                + pushLanguageService.marketStateLabel(marketSnapshot.getMarketState())
+                + pushLanguageService.text("。", ".")
                 : "";
-        return sideHint + marketHint + " 触发时间：" + now.format(TIME_FORMATTER);
+        return sideHint + marketHint + pushLanguageService.text(" 触发时间：", " Triggered At: ") + now.format(TIME_FORMATTER);
     }
 
     private String resolveSeverityLabel(int signalScore, AStockPushType pushType) {
         if (signalScore >= filterConfig.getARealtimeCriticalThreshold()) {
-            return pushType == AStockPushType.REALTIME_RISK ? "核弹级风险" : "核弹级催化";
+            return pushType == AStockPushType.REALTIME_RISK
+                    ? pushLanguageService.text("核弹级风险", "Critical Risk")
+                    : pushLanguageService.text("核弹级催化", "Critical Catalyst");
         }
         if (signalScore >= 90) {
-            return pushType == AStockPushType.REALTIME_RISK ? "强风险预警" : "强催化预警";
+            return pushType == AStockPushType.REALTIME_RISK
+                    ? pushLanguageService.text("强风险预警", "Strong Risk Alert")
+                    : pushLanguageService.text("强催化预警", "Strong Catalyst Alert");
         }
-        return pushType == AStockPushType.REALTIME_RISK ? "高优先级风险" : "高优先级机会";
+        return pushType == AStockPushType.REALTIME_RISK
+                ? pushLanguageService.text("高优先级风险", "High-Priority Risk")
+                : pushLanguageService.text("高优先级机会", "High-Priority Opportunity");
     }
 
     private AStockPushLog buildPushLog(String pushKey,
@@ -337,18 +372,22 @@ public class AStockRealtimePushService {
                                               MarketSnapshot marketSnapshot) {
         String positionLabel = opportunityInsight != null ? opportunityInsight.getPositionLabel() : null;
         String base = switch (StringUtils.defaultString(positionLabel)) {
-            case "领军核心" -> stock + " 刚披露高价值利多公告，具备盘中龙头候选特征。";
-            case "高弹性跟风" -> stock + " 刚披露高价值利多公告，更像主线扩散中的高弹性补涨。";
-            case "观察名单" -> stock + " 刚披露利多公告，但更适合作为观察信号而非直接追涨。";
-            default -> stock + " 刚披露高价值利多公告，属于盘中可跟踪的强催化。";
+            case "领军核心" -> pushLanguageService.text(stock + " 刚披露高价值利多公告，具备盘中龙头候选特征。", stock + " just released a high-value bullish notice and has the profile of a potential intraday leader.");
+            case "高弹性跟风" -> pushLanguageService.text(stock + " 刚披露高价值利多公告，更像主线扩散中的高弹性补涨。", stock + " just released a high-value bullish notice and looks more like a high-beta catch-up play inside a spreading theme.");
+            case "观察名单" -> pushLanguageService.text(stock + " 刚披露利多公告，但更适合作为观察信号而非直接追涨。", stock + " just released a bullish notice, but it is better treated as a watch signal than a direct chase candidate.");
+            default -> pushLanguageService.text(stock + " 刚披露高价值利多公告，属于盘中可跟踪的强催化。", stock + " just released a high-value bullish notice and qualifies as a strong intraday catalyst to track.");
         };
         if (context.hasResonance()) {
-            base += " 且与【" + context.getThemeName() + "】主线形成共振。";
+            base += pushLanguageService.text(" 且与【", " It also resonates with the active theme 【")
+                    + context.getThemeName() + "】"
+                    + pushLanguageService.text("主线形成共振。", ".");
         } else {
-            base += " 暂未检测到明确主线共振。";
+            base += pushLanguageService.text(" 暂未检测到明确主线共振。", " No clear macro-theme resonance has been detected yet.");
         }
         if (marketSnapshot != null && marketSnapshot.getMarketState() != null && marketSnapshot.getMarketState().isRiskOn()) {
-            base += " 当前处于" + marketSnapshot.getMarketState().getLabel() + "，需结合板块承接判断持续性。";
+            base += pushLanguageService.text(" 当前处于", " The market is currently in ")
+                    + pushLanguageService.marketStateLabel(marketSnapshot.getMarketState())
+                    + pushLanguageService.text("，需结合板块承接判断持续性。", ", so durability still needs to be judged against sector follow-through.");
         }
         return base;
     }
@@ -356,18 +395,18 @@ public class AStockRealtimePushService {
     private String buildOpportunityHint(AReportOpportunityInsight opportunityInsight,
                                         MarketSnapshot marketSnapshot) {
         if (opportunityInsight != null && StringUtils.isNotBlank(opportunityInsight.getTradeHint())) {
-            return opportunityInsight.getTradeHint();
+            return pushLanguageService.translateTradeHint(opportunityInsight.getTradeHint());
         }
         if (marketSnapshot != null && marketSnapshot.getMarketState() != null && marketSnapshot.getMarketState().isRiskOn()) {
-            return "利好预警不等于直接涨停，进攻态下更要确认龙头承接与板块扩散。";
+            return pushLanguageService.text("利好预警不等于直接涨停，进攻态下更要确认龙头承接与板块扩散。", "A bullish alert does not guarantee an immediate limit-up move. In a risk-on tape, leader support and sector expansion still need confirmation.");
         }
-        return "利好预警不等于直接涨停，仍需看开盘后的资金承接和板块联动。";
+        return pushLanguageService.text("利好预警不等于直接涨停，仍需看开盘后的资金承接和板块联动。", "A bullish alert does not guarantee an immediate limit-up move; opening support and sector linkage still matter.");
     }
 
     private String resolveMarketStateLabel(MarketSnapshot marketSnapshot) {
         if (marketSnapshot == null || marketSnapshot.getMarketState() == null) {
-            return "中性";
+            return pushLanguageService.text("中性", "Neutral");
         }
-        return marketSnapshot.getMarketState().getLabel();
+        return pushLanguageService.marketStateLabel(marketSnapshot.getMarketState());
     }
 }

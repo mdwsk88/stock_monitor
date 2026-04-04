@@ -72,6 +72,7 @@ stock-web/src/main/resources/sql/init.sql
 
 - 在本机构建 `stock-monitor-web:latest` 和 `stock-monitor-a-stock-mcp:latest`
 - 默认使用 `docker buildx build --platform linux/amd64 --load`，适配当前群晖 `x86_64`
+- Dockerfile 会先按 `pom.xml` 预热依赖，再借助 BuildKit cache mount 复用 Maven 本地仓库；首次构建仍会下载依赖，后续同机连续构建通常不会再大规模重复下载
 - 导出到 `deploy/nas/dist/`
 - 默认通过 tar-over-ssh 上传到 `root@<nas-host>:<nas-ssh-port>`
 - 在 `/volume1/docker/stock-monitor` 下执行 `docker load` 和 `docker compose up -d`
@@ -96,6 +97,8 @@ stock-web/src/main/resources/sql/init.sql
 ```
 
 说明：`--skip-build` 会优先复用本地同标签镜像；如果本地镜像已经被清掉，但 `deploy/nas/dist/` 里还保留对应 tar，也会直接复用现成产物继续部署。若标签仍是浮动的 `latest`，建议先确认本地镜像创建时间或直接改用显式版本标签，避免把旧镜像再次部署到 NAS。
+
+补充说明：如果你执行了 `docker builder prune`、切换了新的 buildx builder，或者改动了根/模块 `pom.xml`，Maven 依赖缓存会重新预热一次，这是预期行为。
 
 如果你后续想直接让我自动部署，参数整理见：
 

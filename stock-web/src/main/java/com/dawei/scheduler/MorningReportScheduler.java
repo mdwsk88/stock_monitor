@@ -7,8 +7,10 @@ import com.dawei.entity.USStockRss;
 import com.dawei.service.AReportFusionService;
 import com.dawei.service.AISummaryService;
 import com.dawei.service.StockRankService;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -33,6 +35,7 @@ public class MorningReportScheduler {
     private final AReportFusionService aReportFusionService;
     private final AISummaryService aiSummaryService;
     private final WeComApi weComApi;
+    private final PushLanguageService pushLanguageService;
     @Value("${stock.push.us-enabled:false}")
     private boolean usPushEnabled;
     @Value("${stock.runtime.scheduler-enabled:true}")
@@ -55,13 +58,23 @@ public class MorningReportScheduler {
     private static final LocalTime US_EVENING_WINDOW_END = LocalTime.of(21, 30);
 
     public MorningReportScheduler(StockRankService stockRankService,
-                                   AReportFusionService aReportFusionService,
-                                   AISummaryService aiSummaryService,
-                                   WeComApi weComApi) {
+                                  AReportFusionService aReportFusionService,
+                                  AISummaryService aiSummaryService,
+                                  WeComApi weComApi) {
+        this(stockRankService, aReportFusionService, aiSummaryService, weComApi, new PushLanguageService());
+    }
+
+    @Autowired
+    public MorningReportScheduler(StockRankService stockRankService,
+                                  AReportFusionService aReportFusionService,
+                                  AISummaryService aiSummaryService,
+                                  WeComApi weComApi,
+                                  PushLanguageService pushLanguageService) {
         this.stockRankService = stockRankService;
         this.aReportFusionService = aReportFusionService;
         this.aiSummaryService = aiSummaryService;
         this.weComApi = weComApi;
+        this.pushLanguageService = pushLanguageService;
     }
 
     /**
@@ -437,47 +450,69 @@ public class MorningReportScheduler {
      * 构建A股无数据时的盘后复盘消息
      */
     private String buildAStockNoDataEveningMessage(String today) {
-        return "# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
-               "今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无 🇨🇳 A股需要解码的异动数据</font>\n" +
-               "<font color=\"comment\">（当前阈值：日内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
-               "💡 持仓深度体检：\n" +
-               "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
-               "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌆 A股盘后情绪解码 | ", "# 🌆 A-Stock Post-Close Decode | ") + today + "\n\n"
+                + pushLanguageService.text("今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n",
+                "The A-stock market has closed. The system reviewed the intraday information flow from 09:00 to 15:00.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无 🇨🇳 A股需要解码的异动数据", "⚠️ No A-stock activity met the post-close decoding threshold")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：日内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 same-day mentions for the same ticker; quality over quantity.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 持仓深度体检：\n今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n👉 请在群内直接发送：@",
+                "💡 Position Check:\nIf today's tape was confusing, ask whether a hidden risk hit one of your holdings:\n👉 Send @")
+                + pushLanguageService.botNameForA()
+                + pushLanguageService.text(" 分析 [你的股票代码]\n\n", " analyze [your ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for post-close research only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建A股盘后复盘错误消息
      */
     private String buildAStockErrorEveningMessage(String today, String errorMsg) {
-        return "# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
-               "今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n" +
-               "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
-               "💡 持仓深度体检：\n" +
-               "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
-               "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌆 A股盘后情绪解码 | ", "# 🌆 A-Stock Post-Close Decode | ") + today + "\n\n"
+                + pushLanguageService.text("今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n",
+                "The A-stock market has closed. The system reviewed the intraday information flow from 09:00 to 15:00.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("❌ 数据获取失败: ", "❌ Failed to load data: ") + errorMsg
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 持仓深度体检：\n今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n👉 请在群内直接发送：@",
+                "💡 Position Check:\nIf today's tape was confusing, ask whether a hidden risk hit one of your holdings:\n👉 Send @")
+                + pushLanguageService.botNameForA()
+                + pushLanguageService.text(" 分析 [你的股票代码]\n\n", " analyze [your ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for post-close research only. It is not investment advice.")
+                + "</font>";
     }
 
     private String buildAPostCloseRiskDigestMessage(String today, AReportFusionContext context) {
         StringBuilder builder = new StringBuilder()
-                .append("# 🌇 A股盘后风险速递 | ").append(today).append("\n\n")
-                .append("收盘后公告窗口（15:00-当前）扫描完成，以下为最值得优先处理的新增风险与补充机会。\n\n");
+                .append(pushLanguageService.text("# 🌇 A股盘后风险速递 | ", "# 🌇 A-Stock Post-Close Risk Digest | "))
+                .append(today).append("\n\n")
+                .append(pushLanguageService.text("收盘后公告窗口（15:00-当前）扫描完成，以下为最值得优先处理的新增风险与补充机会。\n\n",
+                        "The post-close notice window (15:00 to now) has been scanned. These are the highest-priority new risks and supplemental opportunities.\n\n"));
 
         if (!context.getRiskAlerts().isEmpty()) {
-            builder.append("## 风险优先级\n");
+            builder.append("## ").append(pushLanguageService.text("风险优先级", "Risk Priority")).append("\n");
             context.getRiskAlerts().stream().limit(5).forEach(alert -> appendDigestLine(builder, alert, true));
             builder.append("\n");
         }
 
         if (!context.getOpportunityAlerts().isEmpty()) {
-            builder.append("## 机会补充\n");
+            builder.append("## ").append(pushLanguageService.text("机会补充", "Opportunity Add-ons")).append("\n");
             context.getOpportunityAlerts().stream().limit(3).forEach(alert -> appendDigestLine(builder, alert, false));
             builder.append("\n");
         }
 
-        builder.append("<font color=\"comment\">定位：服务收盘后公告密集披露窗口，优先补齐当日 15:30 之后才出现的硬风险和强催化。</font>");
+        builder.append("<font color=\"comment\">")
+                .append(pushLanguageService.text("定位：服务收盘后公告密集披露窗口，优先补齐当日 15:30 之后才出现的硬风险和强催化。",
+                        "Purpose: cover the dense post-close notice window and catch hard risks or strong catalysts that only appeared after 15:30."))
+                .append("</font>");
         return builder.toString();
     }
 
@@ -489,105 +524,183 @@ public class MorningReportScheduler {
         builder.append("> **")
                 .append(stock.getStockName()).append("(").append(stock.getStockCode()).append(")")
                 .append("** | <font color=\"").append(risk ? "warning" : "info").append("\">")
-                .append(stock.getEventType()).append("</font>")
-                .append(" | 事件评分 ").append(alert.getSignalScore())
-                .append(" | 公告数 ").append(alert.getFrequency()).append("\n");
-        builder.append("> ").append(stock.getTitle()).append("\n");
+                .append(pushLanguageService.eventType(stock.getEventType())).append("</font>")
+                .append(" | ").append(pushLanguageService.text("事件评分 ", "Event Score ")).append(alert.getSignalScore())
+                .append(" | ").append(pushLanguageService.text("公告数 ", "Notice Count ")).append(alert.getFrequency()).append("\n");
+        builder.append("> ");
+        if (pushLanguageService.isEnglish()) {
+            builder.append(pushLanguageService.postCloseDigestSummary(
+                    stock.getEventType(),
+                    alert.getSignalSide(),
+                    alert.getSignalScore(),
+                    alert.getFrequency()
+            ));
+        } else {
+            builder.append(stock.getTitle());
+        }
+        builder.append("\n");
     }
 
     private String buildAPostCloseNoDataMessage(String today) {
-        return "# 🌇 A股盘后风险速递 | " + today + "\n\n"
-                + "收盘后公告窗口（15:00-当前）扫描完成。\n\n"
-                + "<font color=\"comment\">暂未识别到新增的高优先级风险或强催化公告，保持常规观察即可。</font>";
+        return pushLanguageService.text("# 🌇 A股盘后风险速递 | ", "# 🌇 A-Stock Post-Close Risk Digest | ") + today + "\n\n"
+                + pushLanguageService.text("收盘后公告窗口（15:00-当前）扫描完成。\n\n",
+                "The post-close notice window (15:00 to now) has been scanned.\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("暂未识别到新增的高优先级风险或强催化公告，保持常规观察即可。",
+                "No new high-priority risk or strong catalyst notice has been identified. Routine monitoring is enough for now.")
+                + "</font>";
     }
 
     private String buildAPostCloseErrorMessage(String today, String errorMsg) {
-        return "# 🌇 A股盘后风险速递 | " + today + "\n\n"
-                + "<font color=\"warning\">❌ 收盘后公告扫描失败："
+        return pushLanguageService.text("# 🌇 A股盘后风险速递 | ", "# 🌇 A-Stock Post-Close Risk Digest | ") + today + "\n\n"
+                + "<font color=\"warning\">" + pushLanguageService.text("❌ 收盘后公告扫描失败：", "❌ Post-close notice scan failed: ")
                 + errorMsg
                 + "</font>\n\n"
-                + "<font color=\"comment\">请检查公告抓取链路或稍后手动重试。</font>";
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("请检查公告抓取链路或稍后手动重试。", "Please inspect the notice ingestion pipeline or retry manually later.")
+                + "</font>";
     }
 
     /**
      * 构建美股夜报（盘前预警）无数据消息
      */
     private String buildUSStockNoDataEveningMessage(String today) {
-        return "# 🌃 美股夜报 | " + today + "\n\n" +
-               "系统扫描全网财经资讯源，为今夜美股开盘做准备。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无 🇺🇸 美股异动预警</font>\n" +
-               "<font color=\"comment\">（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
-               "💡 AI 深度查股：\n" +
-               "想看具体股票分析？请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        return pushLanguageService.text("# 🌃 美股夜报 | ", "# 🌃 US Night Radar | ") + today + "\n\n"
+                + pushLanguageService.text("系统扫描全网财经资讯源，为今夜美股开盘做准备。\n\n",
+                "The system scanned public financial sources to prepare for tonight's US market open.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无 🇺🇸 美股异动预警", "⚠️ No US stock alert met the threshold for tonight")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 mentions for the same ticker in 24h; quality over quantity.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 AI 深度查股：\n想看具体股票分析？请在群内直接发送：@",
+                "💡 AI Deep Dive:\nTo analyze a specific stock, send @")
+                + pushLanguageService.botNameForUS()
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建美股夜报（盘前预警）错误消息
      */
     private String buildUSStockErrorEveningMessage(String today, String errorMsg) {
-        return "# 🌃 美股夜报 | " + today + "\n\n" +
-               "系统扫描全网财经资讯源。\n\n" +
-               "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
-               "💡 AI 深度查股：\n" +
-               "想看具体股票分析？请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        return pushLanguageService.text("# 🌃 美股夜报 | ", "# 🌃 US Night Radar | ") + today + "\n\n"
+                + pushLanguageService.text("系统扫描全网财经资讯源。\n\n", "The system scanned public financial information sources.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("❌ 数据获取失败: ", "❌ Failed to load data: ") + errorMsg
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 AI 深度查股：\n想看具体股票分析？请在群内直接发送：@",
+                "💡 AI Deep Dive:\nTo analyze a specific stock, send @")
+                + pushLanguageService.botNameForUS()
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建美股早报（隔夜复盘）无数据消息
      */
     private String buildUSOvernightNoDataMessage(String today) {
-        return "# 🌅 美股早报 | " + today + "\n\n" +
-               "昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无 🇺🇸 美股需要解码的隔夜异动数据</font>\n" +
-               "<font color=\"comment\">（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
-               "💡 隔夜行情复盘：\n" +
-               "昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n" +
-               "👉 请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌅 美股早报 | ", "# 🌅 US Overnight Recap | ") + today + "\n\n"
+                + pushLanguageService.text("昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n",
+                "The US market has closed. The system replayed the full overnight information flow from 21:30 to 04:00 Beijing time.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无 🇺🇸 美股需要解码的隔夜异动数据", "⚠️ No overnight US stock activity met the recap threshold")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 mentions for the same ticker in 24h; quality over quantity.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 隔夜行情复盘：\n昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n👉 请在群内直接发送：@",
+                "💡 Overnight Replay:\nIf last night's move caught you off guard, ask what actually hit your watchlist:\n👉 Send @")
+                + pushLanguageService.botNameForUS()
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for overnight research only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建美股早报（隔夜复盘）错误消息
      */
     private String buildUSOvernightErrorMessage(String today, String errorMsg) {
-        return "# 🌅 美股早报 | " + today + "\n\n" +
-               "昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n" +
-               "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
-               "💡 隔夜行情复盘：\n" +
-               "昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n" +
-               "👉 请在群内直接发送：@美股分析专家 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。</font>";
+        return pushLanguageService.text("# 🌅 美股早报 | ", "# 🌅 US Overnight Recap | ") + today + "\n\n"
+                + pushLanguageService.text("昨夜美股已收盘。系统回溯了整夜（21:30-04:00）全网资讯发酵轨迹。\n\n",
+                "The US market has closed. The system replayed the full overnight information flow from 21:30 to 04:00 Beijing time.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("❌ 数据获取失败: ", "❌ Failed to load data: ") + errorMsg
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 隔夜行情复盘：\n昨夜美股的大涨大跌让你措手不及？想查查你关注的股票出了什么重磅消息？\n👉 请在群内直接发送：@",
+                "💡 Overnight Replay:\nIf last night's move caught you off guard, ask what actually hit your watchlist:\n👉 Send @")
+                + pushLanguageService.botNameForUS()
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于隔夜逻辑梳理，绝不构成任何投资或交易建议。",
+                "⚠️ Disclaimer: This recap is generated from public news and AI analysis for overnight research only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建无数据时的消息
      */
     private String buildNoDataMessage(String market, String today) {
-        String flag = market.equals("美股") ? "🇺🇸" : "🇨🇳";
-        String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
-        String title = market.equals("美股") ? "# 🌅 AI 盘前异动雷达 | " : "# 🌅 A股盘前异动雷达 | ";
-        return title + today + "\n\n" +
-               "过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n" +
-               "<font color=\"warning\">⚠️ 暂无" + flag + " " + market + "异动数据</font>\n" +
-               "<font color=\"comment\">（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
-               "💡 AI 深度查股：\n" +
-               "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        boolean usMarket = market.equals("美股");
+        String flag = usMarket ? "🇺🇸" : "🇨🇳";
+        String botName = "@" + (usMarket ? pushLanguageService.botNameForUS() : pushLanguageService.botNameForA());
+        String title = usMarket
+                ? pushLanguageService.text("# 🌅 AI 盘前异动雷达 | ", "# 🌅 AI Pre-Market Alert Radar | ")
+                : pushLanguageService.text("# 🌅 A股盘前异动雷达 | ", "# 🌅 A-Stock Pre-Market Alert Radar | ");
+        return title + today + "\n\n"
+                + pushLanguageService.text("过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n",
+                "In the last 24 hours, the system scanned public financial information sources after filtering administrative noise.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("⚠️ 暂无" + flag + " " + market + "异动数据",
+                "⚠️ No notable " + (usMarket ? "US stock" : "A-stock") + " alerts were detected")
+                + "</font>\n"
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）",
+                "(Current threshold: at least 10 mentions for the same ticker in 24h; quality over quantity.)")
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 AI 深度查股：\n想看具体股票分析？请在群内直接发送：",
+                "💡 AI Deep Dive:\nTo analyze a specific stock, send: ")
+                + botName
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.")
+                + "</font>";
     }
 
     /**
      * 构建错误消息
      */
     private String buildErrorMessage(String market, String today, String errorMsg) {
-        String flag = market.equals("美股") ? "🇺🇸" : "🇨🇳";
-        String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
-        return "# 🌅 AI 盘前异动雷达 | " + today + "\n\n" +
-               "过去 24 小时内，系统共扫描全网财经资讯源。\n\n" +
-               "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
-               "💡 AI 深度查股：\n" +
-               "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        boolean usMarket = market.equals("美股");
+        String botName = "@" + (usMarket ? pushLanguageService.botNameForUS() : pushLanguageService.botNameForA());
+        String title = usMarket
+                ? pushLanguageService.text("# 🌅 AI 盘前异动雷达 | ", "# 🌅 AI Pre-Market Alert Radar | ")
+                : pushLanguageService.text("# 🌅 A股盘前异动雷达 | ", "# 🌅 A-Stock Pre-Market Alert Radar | ");
+        return title + today + "\n\n"
+                + pushLanguageService.text("过去 24 小时内，系统共扫描全网财经资讯源。\n\n",
+                "In the last 24 hours, the system scanned public financial information sources.\n\n")
+                + "<font color=\"warning\">"
+                + pushLanguageService.text("❌ 数据获取失败: ", "❌ Failed to load data: ") + errorMsg
+                + "</font>\n\n"
+                + pushLanguageService.text("💡 AI 深度查股：\n想看具体股票分析？请在群内直接发送：",
+                "💡 AI Deep Dive:\nTo analyze a specific stock, send: ")
+                + botName
+                + pushLanguageService.text(" 分析 [股票代码]\n\n", " analyze [ticker]\n\n")
+                + "<font color=\"comment\">"
+                + pushLanguageService.text("⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。",
+                "⚠️ Disclaimer: This report is generated from public information and AI summarization for research discussion only. It is not investment advice.")
+                + "</font>";
     }
 }

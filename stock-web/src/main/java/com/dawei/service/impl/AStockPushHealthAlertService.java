@@ -15,18 +15,16 @@ import com.dawei.mapper.AStockPushLogMapper;
 import com.dawei.mapper.AStockPushDecisionLogMapper;
 import com.dawei.mapper.AStockRssMapper;
 import com.dawei.mapper.MacroThemeEventMapper;
-import com.dawei.service.AStockPushLogService;
 import com.dawei.service.MarketStateService;
-import com.dawei.utils.WeComApi;
+import com.dawei.utils.PushLanguageService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -36,34 +34,39 @@ import java.util.stream.Collectors;
 @Service
 public class AStockPushHealthAlertService {
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final String PUSH_KEY = "push-health|silence";
-
     private final AStockRssMapper aStockRssMapper;
     private final AStockPushDecisionLogMapper aStockPushDecisionLogMapper;
     private final AStockPushLogMapper aStockPushLogMapper;
     private final MacroThemeEventMapper macroThemeEventMapper;
-    private final AStockPushLogService aStockPushLogService;
     private final MarketStateService marketStateService;
-    private final WeComApi weComApi;
     private final StockFilterConfig filterConfig;
+    private final PushLanguageService pushLanguageService;
 
     public AStockPushHealthAlertService(AStockRssMapper aStockRssMapper,
                                         AStockPushDecisionLogMapper aStockPushDecisionLogMapper,
                                         AStockPushLogMapper aStockPushLogMapper,
                                         MacroThemeEventMapper macroThemeEventMapper,
-                                        AStockPushLogService aStockPushLogService,
                                         MarketStateService marketStateService,
-                                        WeComApi weComApi,
                                         StockFilterConfig filterConfig) {
+        this(aStockRssMapper, aStockPushDecisionLogMapper, aStockPushLogMapper, macroThemeEventMapper,
+                marketStateService, filterConfig, new PushLanguageService());
+    }
+
+    @Autowired
+    public AStockPushHealthAlertService(AStockRssMapper aStockRssMapper,
+                                        AStockPushDecisionLogMapper aStockPushDecisionLogMapper,
+                                        AStockPushLogMapper aStockPushLogMapper,
+                                        MacroThemeEventMapper macroThemeEventMapper,
+                                        MarketStateService marketStateService,
+                                        StockFilterConfig filterConfig,
+                                        PushLanguageService pushLanguageService) {
         this.aStockRssMapper = aStockRssMapper;
         this.aStockPushDecisionLogMapper = aStockPushDecisionLogMapper;
         this.aStockPushLogMapper = aStockPushLogMapper;
         this.macroThemeEventMapper = macroThemeEventMapper;
-        this.aStockPushLogService = aStockPushLogService;
         this.marketStateService = marketStateService;
-        this.weComApi = weComApi;
         this.filterConfig = filterConfig;
+        this.pushLanguageService = pushLanguageService;
     }
 
     public AStockPushHealthCheckResult inspectAndPushIfNeeded() {
@@ -106,7 +109,10 @@ public class AStockPushHealthAlertService {
         List<String> reasons = buildAlertReasons(result);
         if (reasons.isEmpty()) {
             result.setAlertTriggered(false);
-            result.setAlertSummary("A股实时链路健康，当前窗口未触发健康告警");
+            result.setAlertSummary(pushLanguageService.text(
+                    "A股实时链路健康，当前窗口未触发健康告警",
+                    "The A-share realtime pipeline is healthy. No health alert was triggered in the current window."
+            ));
             return result;
         }
 
@@ -115,25 +121,10 @@ public class AStockPushHealthAlertService {
         result.setAlertSummary(buildAlertSummary(result));
         result.setSampleNoticeTitles(loadSampleNoticeTitles(windowStart));
         result.setSampleDecisionReasons(loadSampleDecisionReasons(windowStart));
-
-        LocalDateTime cooldownStart = now.minusMinutes(filterConfig.getRealtimeHealthCooldownMinutes());
-        if (aStockPushLogService.hasRecentPush(PUSH_KEY, AStockPushType.REALTIME_HEALTH_ALERT, cooldownStart)) {
-            log.info("A股实时链路健康告警命中冷却期，summary={}", result.getAlertSummary());
-            result.setPushed(false);
-            return result;
-        }
-
-        try {
-            weComApi.sendMarkdownMessage(buildMarkdown(result, marketSnapshot), WeComApi.MarketType.A);
-            aStockPushLogService.recordPush(buildPushLog(result, now));
-            result.setPushed(true);
-            return result;
-        } catch (Exception ex) {
-            log.error("A股实时链路健康告警推送失败，summary={}, reason={}",
-                    result.getAlertSummary(), ex.getMessage(), ex);
-            result.setPushed(false);
-            return result;
-        }
+        result.setPushed(false);
+        log.warn("A股实时链路健康巡检发现异常，但企业微信推送已关闭。summary={}, reason={}",
+                result.getAlertSummary(), result.getAlertReason());
+        return result;
     }
 
     private void populateSnapshotHealth(AStockPushHealthCheckResult result, MarketSnapshot marketSnapshot) {
@@ -202,24 +193,24 @@ public class AStockPushHealthAlertService {
     private List<String> buildAlertReasons(AStockPushHealthCheckResult result) {
         List<String> reasons = new ArrayList<>();
         if (result.getSnapshotHealth() == MarketSnapshotHealth.DISCONNECTED) {
-            reasons.add("市场快照已失联，状态机正在依赖回退快照");
+            reasons.add(pushLanguageService.text("市场快照已失联，状态机正在依赖回退快照", "The market snapshot is disconnected and the state machine is relying on fallback data."));
         } else if (result.getSnapshotHealth() == MarketSnapshotHealth.DEGRADED) {
-            reasons.add("市场快照处于回退中，状态机正在使用缓存快照");
+            reasons.add(pushLanguageService.text("市场快照处于回退中，状态机正在使用缓存快照", "The market snapshot is degraded and the state machine is using cached data."));
         }
         if (sourceContains(result, "NO_BREADTH")) {
-            reasons.add("市场宽度当前不可用，状态机已退化为指数快照");
+            reasons.add(pushLanguageService.text("市场宽度当前不可用，状态机已退化为指数快照", "Market breadth is currently unavailable, so the state machine has degraded to index-only mode."));
         } else if (sourceContains(result, "SAMPLE_BREADTH")
                 && safeInt(result.getSnapshotBreadthSampleSize()) > 0
                 && safeInt(result.getSnapshotBreadthSampleSize()) < filterConfig.getMarketBreadthSampleWarnThreshold()) {
-            reasons.add("市场宽度当前依赖样本代理，且样本数偏低");
+            reasons.add(pushLanguageService.text("市场宽度当前依赖样本代理，且样本数偏低", "Market breadth currently relies on a sample proxy and the sample size is low."));
         }
         if (result.getHardRiskNoticeCount() >= filterConfig.getRealtimeHealthHardRiskCountThreshold()
                 && result.getRiskSentCount() == 0) {
-            reasons.add("硬风险公告已堆积，但实时风险推送为 0");
+            reasons.add(pushLanguageService.text("硬风险公告已堆积，但实时风险推送为 0", "Hard-risk notices have accumulated, but no realtime risk alert has been sent."));
         }
         if (result.getHighSignalNoticeCount() >= filterConfig.getRealtimeHealthHighSignalCountThreshold()
                 && result.getSentCount() == 0) {
-            reasons.add("高分公告持续入库，但实时推送为 0");
+            reasons.add(pushLanguageService.text("高分公告持续入库，但实时推送为 0", "High-score notices continue to arrive, but realtime pushes remain at zero."));
         }
         double skippedRatio = result.getDecisionCount() <= 0
                 ? 0d
@@ -227,21 +218,24 @@ public class AStockPushHealthAlertService {
         if (result.getDecisionCount() >= filterConfig.getRealtimeHealthDecisionCountThreshold()
                 && result.getSentCount() == 0
                 && skippedRatio >= filterConfig.getRealtimeHealthSkippedRatioThreshold()) {
-            reasons.add(String.format("决策层进入高静默区，跳过占比 %.0f%%", skippedRatio * 100));
+            reasons.add(pushLanguageService.text(
+                    String.format("决策层进入高静默区，跳过占比 %.0f%%", skippedRatio * 100),
+                    String.format("Decision layer entered a high-silence zone, with %.0f%% skipped.", skippedRatio * 100)
+            ));
         }
         if (result.getFailedCount() >= filterConfig.getRealtimeHealthFailureCountThreshold()
                 && result.getSentCount() == 0) {
-            reasons.add("发送失败次数偏高，实时链路可能异常");
+            reasons.add(pushLanguageService.text("发送失败次数偏高，实时链路可能异常", "Send failures are elevated and the realtime notification pipeline may be abnormal."));
         }
         if (result.getMacroRiskEventCount() >= filterConfig.getRealtimeHealthMacroRiskCountThreshold()
                 && result.getMacroRiskSentCount() == 0) {
-            reasons.add("宏观风险快讯已堆积，但宏观实时风险推送为 0");
+            reasons.add(pushLanguageService.text("宏观风险快讯已堆积，但宏观实时风险推送为 0", "Macro risk events have accumulated, but macro realtime risk alerts remain at zero."));
         }
         if (result.getMarketState() != null
                 && result.getMarketState().isRiskOn()
                 && result.getMacroOpportunityEventCount() >= filterConfig.getRealtimeHealthMacroOpportunityCountThreshold()
                 && result.getMacroSentCount() == 0) {
-            reasons.add("进攻态下宏观利多快讯密集，但宏观实时推送为 0");
+            reasons.add(pushLanguageService.text("进攻态下宏观利多快讯密集，但宏观实时推送为 0", "Bullish macro headlines are dense in a risk-on regime, but macro realtime pushes remain at zero."));
         }
         return reasons;
     }
@@ -250,23 +244,39 @@ public class AStockPushHealthAlertService {
         List<String> summaryParts = new ArrayList<>();
         if (result.getSnapshotHealth() == MarketSnapshotHealth.DISCONNECTED
                 || result.getSnapshotHealth() == MarketSnapshotHealth.DEGRADED) {
-            summaryParts.add("市场快照" + snapshotHealthLabel(result.getSnapshotHealth())
-                    + "，数据源 " + StringUtils.defaultIfBlank(result.getSnapshotSource(), "--")
-                    + "，连续失败 " + safeInt(result.getSnapshotConsecutiveFailureCount()) + " 次");
+            summaryParts.add(pushLanguageService.text(
+                    "市场快照" + snapshotHealthLabel(result.getSnapshotHealth())
+                            + "，数据源 " + StringUtils.defaultIfBlank(result.getSnapshotSource(), "--")
+                            + "，连续失败 " + safeInt(result.getSnapshotConsecutiveFailureCount()) + " 次",
+                    "Market snapshot is " + snapshotHealthLabel(result.getSnapshotHealth())
+                            + ", source " + StringUtils.defaultIfBlank(result.getSnapshotSource(), "--")
+                            + ", consecutive failures " + safeInt(result.getSnapshotConsecutiveFailureCount())
+            ));
         } else if (sourceContains(result, "NO_BREADTH")) {
-            summaryParts.add("市场宽度缺失，状态机当前退化为指数快照");
+            summaryParts.add(pushLanguageService.text("市场宽度缺失，状态机当前退化为指数快照", "Market breadth is missing and the state machine is currently degraded to index-only mode."));
         } else if (sourceContains(result, "SAMPLE_BREADTH")
                 && safeInt(result.getSnapshotBreadthSampleSize()) > 0
                 && safeInt(result.getSnapshotBreadthSampleSize()) < filterConfig.getMarketBreadthSampleWarnThreshold()) {
-            summaryParts.add("市场宽度仅使用样本代理，当前样本 " + safeInt(result.getSnapshotBreadthSampleSize()) + " 只");
+            summaryParts.add(pushLanguageService.text(
+                    "市场宽度仅使用样本代理，当前样本 " + safeInt(result.getSnapshotBreadthSampleSize()) + " 只",
+                    "Market breadth is using a sample proxy only, with " + safeInt(result.getSnapshotBreadthSampleSize()) + " names in the sample"
+            ));
         }
-        summaryParts.add("过去 " + filterConfig.getRealtimeHealthWindowMinutes() + " 分钟内高分公告 "
-                + result.getHighSignalNoticeCount() + " 条，硬风险 "
-                + result.getHardRiskNoticeCount() + " 条，宏观风险 "
-                + result.getMacroRiskEventCount() + " 条，但实时已发送仅 "
-                + result.getSentCount() + " 条，宏观已发送 "
-                + result.getMacroSentCount() + " 条");
-        return String.join("；", summaryParts);
+        summaryParts.add(pushLanguageService.text(
+                "过去 " + filterConfig.getRealtimeHealthWindowMinutes() + " 分钟内高分公告 "
+                        + result.getHighSignalNoticeCount() + " 条，硬风险 "
+                        + result.getHardRiskNoticeCount() + " 条，宏观风险 "
+                        + result.getMacroRiskEventCount() + " 条，但实时已发送仅 "
+                        + result.getSentCount() + " 条，宏观已发送 "
+                        + result.getMacroSentCount() + " 条",
+                "In the last " + filterConfig.getRealtimeHealthWindowMinutes() + " minutes, there were "
+                        + result.getHighSignalNoticeCount() + " high-score notices, "
+                        + result.getHardRiskNoticeCount() + " hard-risk notices, and "
+                        + result.getMacroRiskEventCount() + " macro risk events, but only "
+                        + result.getSentCount() + " realtime pushes and "
+                        + result.getMacroSentCount() + " macro pushes were sent."
+        ));
+        return String.join(pushLanguageService.text("；", "; "), summaryParts);
     }
 
     private List<String> loadSampleNoticeTitles(LocalDateTime windowStart) {
@@ -279,8 +289,8 @@ public class AStockPushHealthAlertService {
                         .last("LIMIT 3"))
                 .stream()
                 .map(notice -> notice.getStockName() + "(" + notice.getStockCode() + ") "
-                        + "[" + StringUtils.defaultString(notice.getSignalSide(), "未知") + "/"
-                        + safeInt(notice.getSignalScore()) + "分] "
+                        + "[" + pushLanguageService.signalSideLabel(StringUtils.defaultString(notice.getSignalSide(), pushLanguageService.text("未知", "Unknown"))) + "/"
+                        + safeInt(notice.getSignalScore()) + pushLanguageService.text("分", "") + "] "
                         + StringUtils.abbreviate(StringUtils.defaultString(notice.getTitle()), 50))
                 .collect(Collectors.toList());
     }
@@ -294,82 +304,8 @@ public class AStockPushHealthAlertService {
                 .stream()
                 .map(logEntry -> logEntry.getStockName() + "(" + logEntry.getStockCode() + ") "
                         + "[" + StringUtils.defaultString(logEntry.getSendStatus(), "UNKNOWN") + "] "
-                        + StringUtils.abbreviate(StringUtils.defaultString(logEntry.getDecisionReason(), "无决策原因"), 50))
+                        + StringUtils.abbreviate(StringUtils.defaultString(logEntry.getDecisionReason(), pushLanguageService.text("无决策原因", "No decision reason")), 50))
                 .collect(Collectors.toList());
-    }
-
-    private String buildMarkdown(AStockPushHealthCheckResult result, MarketSnapshot snapshot) {
-        boolean defensive = result.getMarketState() == MarketState.DEFENSIVE;
-        String color = defensive ? "warning" : "comment";
-        String stateLabel = result.getMarketState() != null ? result.getMarketState().getLabel() : MarketState.NEUTRAL.getLabel();
-        String snapshotHealthLabel = snapshotHealthLabel(result.getSnapshotHealth());
-        String noticeLines = result.getSampleNoticeTitles().isEmpty()
-                ? "> **样本公告**：当前窗口无高分样本\n"
-                : result.getSampleNoticeTitles().stream()
-                .map(item -> "> - " + item)
-                .collect(Collectors.joining("\n")) + "\n";
-        String decisionLines = result.getSampleDecisionReasons().isEmpty()
-                ? "> **决策样本**：当前窗口无决策样本\n"
-                : result.getSampleDecisionReasons().stream()
-                .map(item -> "> - " + item)
-                .collect(Collectors.joining("\n")) + "\n";
-        String marketLine = snapshot == null
-                ? "> **市场状态**：<font color=\"" + color + "\">" + stateLabel + "</font>\n"
-                : "> **市场状态**：<font color=\"" + color + "\">" + stateLabel + "</font>"
-                + " | 上证 " + formatPct(snapshot.getShChangePct())
-                + " | 深成 " + formatPct(snapshot.getSzChangePct())
-                + " | 创业板 " + formatPct(snapshot.getCybChangePct()) + "\n";
-        String snapshotLine = "> **快照链路**："
-                + StringUtils.defaultString(snapshotHealthLabel, "--")
-                + " | 数据源 " + StringUtils.defaultIfBlank(result.getSnapshotSource(), "--")
-                + " | 宽度样本 " + (safeInt(result.getSnapshotBreadthSampleSize()) > 0
-                ? safeInt(result.getSnapshotBreadthSampleSize()) + " 只"
-                : "--")
-                + " | 连续失败 " + safeInt(result.getSnapshotConsecutiveFailureCount()) + "\n";
-        String snapshotFailureLine = StringUtils.isBlank(result.getSnapshotLastFailureReason())
-                ? ""
-                : "> **最近失败**：" + StringUtils.abbreviate(result.getSnapshotLastFailureReason(), 80)
-                + " | 最后失败时间 " + formatTime(result.getSnapshotLastFailureAt())
-                + " | 下次重试 " + formatTime(result.getSnapshotNextRetryAt()) + "\n";
-
-        return "# 🚨 A股实时链路健康告警\n\n"
-                + marketLine
-                + snapshotLine
-                + snapshotFailureLine
-                + "> **巡检窗口**：" + result.getWindowStart().format(TIME_FORMATTER)
-                + " ~ " + result.getWindowEnd().format(TIME_FORMATTER) + "\n"
-                + "> **结论**：" + result.getAlertSummary() + "\n"
-                + "> **触发原因**：" + result.getAlertReason() + "\n"
-                + "> **决策分布**：总决策 " + result.getDecisionCount()
-                + " | 已发送 " + result.getSentCount()
-                + " | 已跳过 " + result.getSkippedCount()
-                + " | 失败 " + result.getFailedCount()
-                + " | 风险已发送 " + result.getRiskSentCount() + "\n"
-                + "> **宏观分布**：风险事件 " + result.getMacroRiskEventCount()
-                + " | 机会事件 " + result.getMacroOpportunityEventCount()
-                + " | 宏观已发送 " + result.getMacroSentCount()
-                + " | 宏观风险已发送 " + result.getMacroRiskSentCount() + "\n"
-                + noticeLines
-                + decisionLines
-                + "> **执行建议**：优先检查市场快照上游、实时窗口判定、状态机降级、冷却策略和企业微信发送链路。\n\n"
-                + "<font color=\"comment\">健康告警基于决策日志、公告入库与市场快照状态，目的是暴露链路失声和状态机退化。</font>";
-    }
-
-    private AStockPushLog buildPushLog(AStockPushHealthCheckResult result, LocalDateTime now) {
-        AStockPushLog pushLog = new AStockPushLog();
-        pushLog.setId(UUID.randomUUID().toString().replace("-", ""));
-        pushLog.setPushKey(PUSH_KEY);
-        pushLog.setPushType(AStockPushType.REALTIME_HEALTH_ALERT.name());
-        pushLog.setSignalSide(result.getSnapshotHealth() == MarketSnapshotHealth.DISCONNECTED
-                || result.getMarketState() == MarketState.DEFENSIVE ? "利空" : "中性");
-        pushLog.setSignalScore(Math.max(safeInt(result.getHighSignalNoticeCount()),
-                safeInt(result.getSnapshotConsecutiveFailureCount())));
-        pushLog.setEventType("实时链路健康告警");
-        pushLog.setTitle(result.getAlertSummary());
-        pushLog.setDecisionReason(result.getAlertReason());
-        pushLog.setPushedAt(now);
-        pushLog.setCreateTime(now);
-        return pushLog;
     }
 
     private boolean sourceContains(AStockPushHealthCheckResult result, String marker) {
@@ -378,15 +314,7 @@ public class AStockPushHealthAlertService {
     }
 
     private String snapshotHealthLabel(MarketSnapshotHealth snapshotHealth) {
-        return snapshotHealth != null ? snapshotHealth.getLabel() : "--";
-    }
-
-    private String formatPct(double value) {
-        return String.format("%+.2f%%", value);
-    }
-
-    private String formatTime(LocalDateTime value) {
-        return value == null ? "--" : value.format(TIME_FORMATTER);
+        return snapshotHealth != null ? pushLanguageService.snapshotHealthLabel(snapshotHealth) : "--";
     }
 
     private int safeInt(Integer value) {

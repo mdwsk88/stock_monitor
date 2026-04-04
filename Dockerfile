@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 ARG APP_MODULE=stock-web
 ARG APP_PORT=8888
 
@@ -7,9 +9,22 @@ ARG APP_MODULE
 
 WORKDIR /workspace
 
-COPY . .
+COPY pom.xml ./
+COPY stock-common/pom.xml stock-common/pom.xml
+COPY stock-web/pom.xml stock-web/pom.xml
+COPY us-stock-mcp/pom.xml us-stock-mcp/pom.xml
+COPY a-stock-mcp/pom.xml a-stock-mcp/pom.xml
 
-RUN mvn -pl ${APP_MODULE} -am -DskipTests package \
+RUN --mount=type=cache,target=/root/.m2,id=stock-monitor-m2 \
+    mvn -B -ntp -pl ${APP_MODULE} -am -DskipTests dependency:go-offline
+
+COPY stock-common/src stock-common/src
+COPY stock-web/src stock-web/src
+COPY us-stock-mcp/src us-stock-mcp/src
+COPY a-stock-mcp/src a-stock-mcp/src
+
+RUN --mount=type=cache,target=/root/.m2,id=stock-monitor-m2 \
+    mvn -B -ntp -pl ${APP_MODULE} -am -DskipTests package \
     && cp "$(find ${APP_MODULE}/target -maxdepth 1 -type f -name '*.jar' ! -name '*.original' | head -n 1)" /workspace/app.jar
 
 FROM eclipse-temurin:21-jre-jammy

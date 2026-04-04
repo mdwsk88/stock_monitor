@@ -166,6 +166,61 @@ public class StockFilterConfig {
     private int marketPulseCooldownMinutes = 20;
 
     /**
+     * 宏观级/情绪级同向告警家族冷却时间（分钟）
+     */
+    private int marketAlertFamilyCooldownMinutes = 120;
+
+    /**
+     * 市场状态最短驻留时间（分钟），用于抑制短时间内牛熊来回切换
+     */
+    private int marketStateFamilyMinDwellMinutes = 60;
+
+    /**
+     * 防守态确认窗口（分钟）
+     */
+    private int marketStateDefensiveConfirmMinutes = 15;
+
+    /**
+     * 中性态确认窗口（分钟）
+     */
+    private int marketStateNeutralConfirmMinutes = 20;
+
+    /**
+     * 进攻态确认窗口（分钟）
+     */
+    private int marketStateRiskOnConfirmMinutes = 30;
+
+    /**
+     * 高潮态确认窗口（分钟）
+     */
+    private int marketStateOverheatConfirmMinutes = 120;
+
+    /**
+     * 状态确认所需的最小样本数
+     */
+    private int marketStateConfirmMinObservations = 3;
+
+    /**
+     * 状态确认所需的窗口命中比例
+     */
+    private double marketStateConfirmRatio = 0.7d;
+
+    /**
+     * 极端风险强制切换阈值：任一核心指数跌幅
+     */
+    private double marketPanicIndexDropThreshold = -3.0d;
+
+    /**
+     * 极端风险强制切换阈值：近似跌停家数
+     */
+    private int marketPanicLimitDownThreshold = 150;
+
+    /**
+     * 极端风险强制切换阈值：上涨家数占比
+     */
+    private double marketPanicBreadthThreshold = 0.25d;
+
+    /**
      * A股实时链路健康巡检窗口（分钟）
      */
     private int realtimeHealthWindowMinutes = 120;

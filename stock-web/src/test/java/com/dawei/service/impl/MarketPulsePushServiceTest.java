@@ -8,6 +8,7 @@ import com.dawei.entity.MarketSnapshotHealth;
 import com.dawei.entity.MarketState;
 import com.dawei.service.AStockPushLogService;
 import com.dawei.service.MarketStateService;
+import com.dawei.utils.PushLanguageService;
 import com.dawei.utils.WeComApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,10 +18,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,14 +38,21 @@ class MarketPulsePushServiceTest {
     private WeComApi weComApi;
 
     private MarketPulsePushService marketPulsePushService;
+    private MarketAlertCoordinatorService marketAlertCoordinatorService;
 
     @BeforeEach
     void setUp() {
         StockFilterConfig filterConfig = new StockFilterConfig();
         filterConfig.setMarketPulseCooldownMinutes(20);
+        filterConfig.setMarketAlertFamilyCooldownMinutes(120);
+        filterConfig.setMarketPanicIndexDropThreshold(-3.0d);
+        filterConfig.setMarketPanicLimitDownThreshold(150);
+        filterConfig.setMarketPanicBreadthThreshold(0.25d);
+        marketAlertCoordinatorService = new MarketAlertCoordinatorService(aStockPushLogService, filterConfig);
         marketPulsePushService = new MarketPulsePushService(
                 marketStateService,
                 aStockPushLogService,
+                marketAlertCoordinatorService,
                 weComApi,
                 filterConfig
         );
@@ -65,6 +73,7 @@ class MarketPulsePushServiceTest {
         when(marketStateService.refreshSnapshot()).thenReturn(snapshot(MarketState.DEFENSIVE));
         when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MARKET_PULSE_RISK), any()))
                 .thenReturn(false);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(null);
 
         boolean pushed = marketPulsePushService.refreshAndPushIfNeeded();
 
@@ -103,9 +112,60 @@ class MarketPulsePushServiceTest {
         verify(aStockPushLogService, never()).recordPush(any());
     }
 
+    @Test
+    void refreshAndPushIfNeeded_ShouldSuppressSameFamilyWithinCoordinatorCooldown() {
+        when(marketStateService.refreshSnapshot()).thenReturn(snapshot(MarketState.RISK_ON));
+        when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MARKET_PULSE_OPPORTUNITY), any()))
+                .thenReturn(false);
+        AStockPushLog recentBullishPush = new AStockPushLog();
+        recentBullishPush.setPushType(AStockPushType.MACRO_REALTIME_OPPORTUNITY.name());
+        recentBullishPush.setPushKey("macro-realtime|recent");
+        recentBullishPush.setSignalScore(90);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(recentBullishPush);
+
+        boolean pushed = marketPulsePushService.refreshAndPushIfNeeded();
+
+        assertFalse(pushed);
+        verify(weComApi, never()).sendMarkdownMessage(any(), any());
+        verify(aStockPushLogService, never()).recordPush(any());
+    }
+
+    @Test
+    void refreshAndPushIfNeeded_ShouldRenderEnglishMarkdownWhenLanguageSwitchOn() {
+        StockFilterConfig filterConfig = new StockFilterConfig();
+        filterConfig.setMarketPulseCooldownMinutes(20);
+        filterConfig.setMarketAlertFamilyCooldownMinutes(120);
+        filterConfig.setMarketPanicIndexDropThreshold(-3.0d);
+        filterConfig.setMarketPanicLimitDownThreshold(150);
+        filterConfig.setMarketPanicBreadthThreshold(0.25d);
+        MarketAlertCoordinatorService coordinator = new MarketAlertCoordinatorService(aStockPushLogService, filterConfig);
+        MarketPulsePushService englishService = new MarketPulsePushService(
+                marketStateService,
+                aStockPushLogService,
+                coordinator,
+                weComApi,
+                filterConfig,
+                new PushLanguageService("en")
+        );
+        when(marketStateService.refreshSnapshot()).thenReturn(snapshot(MarketState.DEFENSIVE));
+        when(aStockPushLogService.hasRecentPush(any(), eq(AStockPushType.MARKET_PULSE_RISK), any())).thenReturn(false);
+        when(aStockPushLogService.findLatestPush(anyList(), any())).thenReturn(null);
+
+        boolean pushed = englishService.refreshAndPushIfNeeded();
+
+        assertTrue(pushed);
+        ArgumentCaptor<String> markdownCaptor = ArgumentCaptor.forClass(String.class);
+        verify(weComApi).sendMarkdownMessage(markdownCaptor.capture(), eq(WeComApi.MarketType.A));
+        assertTrue(markdownCaptor.getValue().contains("A-Share Defensive Radar"));
+        assertTrue(markdownCaptor.getValue().contains("Regime"));
+        assertTrue(markdownCaptor.getValue().contains("Triggered At"));
+    }
+
     private MarketSnapshot snapshot(MarketState marketState) {
         MarketSnapshot snapshot = MarketSnapshot.neutral(LocalDateTime.of(2026, 3, 23, 10, 0), "TEST");
         snapshot.setMarketState(marketState);
+        snapshot.setRawMarketState(marketState);
+        snapshot.setStateConfirmedAt(LocalDateTime.of(2026, 3, 23, 10, 0));
         snapshot.setShChangePct(marketState == MarketState.DEFENSIVE ? -2.1d : 1.8d);
         snapshot.setSzChangePct(marketState == MarketState.DEFENSIVE ? -3.0d : 2.2d);
         snapshot.setCybChangePct(marketState == MarketState.DEFENSIVE ? -3.4d : 2.7d);

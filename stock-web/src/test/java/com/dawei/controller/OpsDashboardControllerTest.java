@@ -89,13 +89,13 @@ class OpsDashboardControllerTest {
     void testRunHealthCheck() {
         AStockPushHealthCheckResult resultObject = new AStockPushHealthCheckResult();
         resultObject.setAlertTriggered(true);
-        resultObject.setPushed(true);
+        resultObject.setPushed(false);
         when(aStockPushHealthAlertService.inspectAndPushIfNeeded()).thenReturn(resultObject);
 
         Map<String, Object> result = opsDashboardController.runHealthCheck();
 
         assertTrue((Boolean) result.get("success"));
-        assertEquals("健康告警已触发并推送", result.get("message"));
+        assertEquals("健康巡检发现异常，结果已保留，不再推送企业微信", result.get("message"));
         assertSame(resultObject, result.get("data"));
     }
 

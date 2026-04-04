@@ -8,6 +8,7 @@ import com.dawei.service.AStockPushLogService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * A股实时推送日志服务实现
@@ -32,6 +33,19 @@ public class AStockPushLogServiceImpl implements AStockPushLogService {
                 .ge("pushed_at", since)
                 .last("LIMIT 1");
         return aStockPushLogMapper.selectCount(queryWrapper) > 0;
+    }
+
+    @Override
+    public AStockPushLog findLatestPush(List<AStockPushType> pushTypes, LocalDateTime since) {
+        if (pushTypes == null || pushTypes.isEmpty() || since == null) {
+            return null;
+        }
+        QueryWrapper<AStockPushLog> queryWrapper = new QueryWrapper<AStockPushLog>()
+                .in("push_type", pushTypes.stream().map(Enum::name).toList())
+                .ge("pushed_at", since)
+                .orderByDesc("pushed_at")
+                .last("LIMIT 1");
+        return aStockPushLogMapper.selectOne(queryWrapper);
     }
 
     @Override
