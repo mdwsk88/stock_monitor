@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEPLOY_DIR="$ROOT_DIR/deploy/nas"
 DIST_DIR="$DEPLOY_DIR/dist"
 
-NAS_HOST="${NAS_HOST:-root@<nas-host>}"
-NAS_PORT="${NAS_PORT:-<nas-ssh-port>}"
+NAS_HOST="${NAS_HOST:-root@nas.local}"
+NAS_PORT="${NAS_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-/volume1/docker/stock-monitor}"
 REMOTE_DOCKER_BIN="${REMOTE_DOCKER_BIN:-/usr/local/bin/docker}"
 SSH_STRICT_HOST_KEY_CHECKING="${SSH_STRICT_HOST_KEY_CHECKING:-accept-new}"
@@ -29,8 +29,8 @@ to Synology, load the images on NAS, start containers, and wait for healthy stat
 Options:
   --only both|stock-web|a-stock-mcp
   --skip-build
-  --host root@<nas-host>
-  --port <nas-ssh-port>
+  --host root@nas.local
+  --port 22
   --remote-dir /volume1/docker/stock-monitor
   --docker-bin /usr/local/bin/docker
   --platform linux/amd64

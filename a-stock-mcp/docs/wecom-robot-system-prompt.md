@@ -148,4 +148,4 @@
 
 纯文本备用版：
 
-- [wecom-robot-system-prompt.txt](<workspace-root>/a-stock-mcp/docs/wecom-robot-system-prompt.txt)
+- [wecom-robot-system-prompt.txt](wecom-robot-system-prompt.txt)

@@ -271,7 +271,7 @@
 
 如果外层服务还没做这些 guard，建议顺序如下：
 
-1. 固定加载 [wecom-a-stock-robot-system-prompt.md](<workspace-root>/a-stock-mcp/src/main/resources/prompts/wecom-a-stock-robot-system-prompt.md)
+1. 固定加载 [wecom-a-stock-robot-system-prompt.md](../src/main/resources/prompts/wecom-a-stock-robot-system-prompt.md)
 2. 落 `OFF_TOPIC / NO_DATA / UNSUPPORTED / AMBIGUOUS_TARGET` 四类模板
 3. 记录 `question_type / fallback_type / tool_hit / sanitizer_hit`
 4. 上 `output_sanitizer`

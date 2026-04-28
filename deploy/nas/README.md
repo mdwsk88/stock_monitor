@@ -1,12 +1,12 @@
 # Stock Monitor NAS Deployment
 
-本方案针对 `Synology DS218+`，当前前提是：
+本方案针对 `Synology NAS`，当前前提是：
 
 - 主要部署 `stock-web`
 - 可选附加部署 `a-stock-mcp`
 - NAS 已安装并运行本机 MySQL / MariaDB
 - `stock-web` 仅内网访问，`a-stock-mcp` 可按需做端口转发对外提供 SSE
-- NAS 内存已升级到 `6G`
+- 请根据你的 NAS 可用内存调整 JVM 参数
 
 ## 设计说明
 
@@ -17,9 +17,9 @@
 - JDBC 连接串里的 `serverTimezone` 建议与 NAS 上数据库实例的真实时区一致；不确定时先沿用项目当前默认的 `UTC`。
 - 健康检查使用 `/actuator/health`，适合 Docker 和群晖容器管理器监控。
 - 不要在 `docker-compose.yml` 里强制改成 `json-file` 等其他日志驱动，保留群晖默认日志驱动，`Container Manager` 才能直接在界面里显示容器日志。
-- DS218+ 的 CPU 更适合“运行容器”，不适合在 NAS 上做 Maven 构建；镜像建议在本地构建后导入 NAS。
+- 家用 NAS 更适合“运行容器”，不适合在 NAS 上做 Maven 构建；镜像建议在本地构建后导入 NAS。
 - 当前 NAS 上的 Docker 可执行文件是 `/usr/local/bin/docker`。
-- 当前 NAS 已开启 SFTP，端口同样是 `<nas-ssh-port>`；手动上传可直接使用 `scp` / `sftp`，脚本仍默认使用 tar-over-ssh。
+- 当前 NAS 已开启 SFTP，端口由 `<nas-ssh-port>` 指定；手动上传可直接使用 `scp` / `sftp`，脚本仍默认使用 tar-over-ssh。
 
 ## 目录规划
 
@@ -361,7 +361,7 @@ docker compose -f docker-compose.a-stock-mcp.yml up -d
 
 ## 资源建议
 
-- 当前 `JAVA_OPTS` 默认给到 `768m` 最大堆，适合 `DS218+ 6G + 本机数据库` 的组合。
+- 当前 `JAVA_OPTS` 默认给到 `768m` 最大堆，适合中小型家用 NAS + 本机数据库的组合。
 - 如果观察到 GC 偏频繁，可升到 `-Xmx1024m`。
 - 如果 NAS 同时跑了更多服务，优先保守到 `-Xmx512m`。
 - `a-stock-mcp` 默认给到 `512m` 最大堆，通常足够；如果只是轻量问答，可先保守到 `-Xmx384m`。
