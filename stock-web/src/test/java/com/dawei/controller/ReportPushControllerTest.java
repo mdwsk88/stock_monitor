@@ -160,13 +160,13 @@ class ReportPushControllerTest {
     @Test
     @DisplayName("测试手动触发宏观快讯实时回扫")
     void testPushMacroRealtimeAlerts() {
-        when(macroRealtimePushService.scanAndPushRecentEvents()).thenReturn(macroScanResult(2, 1, 1));
+        when(macroRealtimePushService.scanAndPushRecentEventsManually()).thenReturn(macroScanResult(2, 1, 1));
 
         Map<String, Object> result = reportPushController.pushMacroRealtimeAlerts();
 
         assertTrue((Boolean) result.get("success"));
         assertEquals("宏观快讯实时推送已执行", result.get("message"));
-        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEventsManually();
     }
 
     @Test
@@ -227,7 +227,7 @@ class ReportPushControllerTest {
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
         verify(morningReportScheduler, times(1)).pushUSEveningReportManually();
         verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
-        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEventsManually();
     }
 
     @Test
@@ -251,7 +251,7 @@ class ReportPushControllerTest {
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
         verify(morningReportScheduler, times(1)).pushUSEveningReportManually();
         verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
-        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEventsManually();
     }
 
     @Test
@@ -273,7 +273,7 @@ class ReportPushControllerTest {
         verify(morningReportScheduler, times(1)).pushAMorningReportManually();
         verify(morningReportScheduler, times(1)).pushAEveningReportManually();
         verify(aStockPushHealthAlertService, times(1)).inspectAndPushIfNeeded();
-        verify(macroRealtimePushService, times(1)).scanAndPushRecentEvents();
+        verify(macroRealtimePushService, times(1)).scanAndPushRecentEventsManually();
     }
 
     private AStockPushHealthCheckResult healthCheckResult(boolean alertTriggered, boolean pushed) {
