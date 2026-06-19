@@ -10,6 +10,7 @@ import com.dawei.entity.MacroThemeEvent;
 import com.dawei.entity.StockAlertDTO;
 import com.dawei.entity.USStockRss;
 import com.dawei.service.AISummaryService;
+import com.dawei.utils.AStockEngagementMarkdown;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -674,7 +675,9 @@ public class AISummaryServiceImpl implements AISummaryService {
             return ensureAStockMarkdown(markdown, reportContext, reportDate, true);
         } catch (Exception e) {
             log.error("生成A股盘前早报 Markdown 失败: {}", e.getMessage(), e);
-            return generateAMorningFallbackMarkdown(reportContext, reportDate);
+            return AStockEngagementMarkdown.appendReportTail(
+                    injectAStockScoreNote(generateAMorningFallbackMarkdown(reportContext, reportDate), true)
+            );
         }
     }
 
@@ -722,7 +725,9 @@ public class AISummaryServiceImpl implements AISummaryService {
             return ensureAStockMarkdown(markdown, reportContext, reportDate, false);
         } catch (Exception e) {
             log.error("生成A股盘后复盘 Markdown 失败: {}", e.getMessage(), e);
-            return generateEveningFallbackMarkdown(reportContext, reportDate);
+            return AStockEngagementMarkdown.appendReportTail(
+                    injectAStockScoreNote(generateEveningFallbackMarkdown(reportContext, reportDate), false)
+            );
         }
     }
 
@@ -1040,24 +1045,25 @@ public class AISummaryServiceImpl implements AISummaryService {
         String thresholdDesc = market.equals("A股")
                 ? "（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）"
                 : "（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）";
-        return "# 🌅 AI 盘前异动雷达 | " + reportDate + "\n\n" +
+        String markdown = "# 🌅 AI 盘前异动雷达 | " + reportDate + "\n\n" +
                "过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n" +
                "<font color=\"warning\">⚠️ 暂无" + market + "异动数据</font>\n" +
                "<font color=\"comment\">" + thresholdDesc + "</font>\n\n" +
                "💡 AI 深度查股：\n" +
                "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
                "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        return "A股".equals(market) ? AStockEngagementMarkdown.appendReportTail(markdown) : markdown;
     }
 
     private String buildAStockNoDataEveningMarkdown(String reportDate) {
-        return "# 🌆 A股盘后情绪解码 | " + reportDate + "\n\n" +
+        return AStockEngagementMarkdown.appendReportTail("# 🌆 A股盘后情绪解码 | " + reportDate + "\n\n" +
                "今日 A 股已收盘。系统回溯了日内（9:00-15:00）公告事件，并拆分出机会与风险两条主线。\n\n" +
                "<font color=\"warning\">⚠️ 暂无 🇨🇳 A股需要解码的盘后事件</font>\n" +
                "<font color=\"comment\">（当前阈值：事件评分 >= 60 分，且已过滤治理/理财/会务等噪音公告）</font>\n\n" +
                "💡 持仓深度体检：\n" +
                "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
                "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>");
     }
 
     /**
@@ -1102,9 +1108,9 @@ public class AISummaryServiceImpl implements AISummaryService {
             String fallback = morning
                     ? generateAMorningFallbackMarkdown(reportContext, reportDate)
                     : generateEveningFallbackMarkdown(reportContext, reportDate);
-            return injectAStockScoreNote(fallback, morning);
+            return AStockEngagementMarkdown.appendReportTail(injectAStockScoreNote(fallback, morning));
         }
-        return injectAStockScoreNote(cleaned, morning);
+        return AStockEngagementMarkdown.appendReportTail(injectAStockScoreNote(cleaned, morning));
     }
 
     private String injectAStockScoreNote(String markdown, boolean morning) {

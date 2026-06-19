@@ -5,6 +5,7 @@
 target
 **/target
 dist/
+deploy/nas/dist/
 
 .env
 *.env

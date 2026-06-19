@@ -76,3 +76,34 @@ CREATE TABLE IF NOT EXISTS a_theme_auto_pool (
 );
 
 CREATE INDEX IF NOT EXISTS idx_theme_auto_pool ON a_theme_auto_pool(theme_name, stock_code);
+
+CREATE TABLE IF NOT EXISTS a_wecom_subscription (
+    id VARCHAR(64) PRIMARY KEY,
+    subscription_type VARCHAR(20) NOT NULL,
+    target_name VARCHAR(80) NOT NULL,
+    stock_code VARCHAR(20) NOT NULL DEFAULT '',
+    enabled TINYINT DEFAULT 1,
+    source VARCHAR(50),
+    reason VARCHAR(255),
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wecom_subscription_enabled ON a_wecom_subscription(enabled, subscription_type);
+
+CREATE TABLE IF NOT EXISTS a_wecom_feedback (
+    id VARCHAR(64) PRIMARY KEY,
+    feedback_type VARCHAR(20) NOT NULL,
+    target_type VARCHAR(20),
+    target_name VARCHAR(100),
+    stock_code VARCHAR(20),
+    theme_name VARCHAR(80),
+    push_type VARCHAR(40),
+    push_key VARCHAR(180),
+    source VARCHAR(50),
+    comment VARCHAR(500),
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wecom_feedback_time ON a_wecom_feedback(create_time);
+CREATE INDEX IF NOT EXISTS idx_wecom_feedback_type_time ON a_wecom_feedback(feedback_type, create_time);

@@ -43,6 +43,10 @@ build/
 *.env
 !.env.example
 
+### Runtime Logs / Local Artifacts ###
+runtime/local-services/logs/
+deploy/nas/dist/
+
 ### Application Properties (with secrets) ###
 application-local.yml
 application-dev.yml

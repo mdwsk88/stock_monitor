@@ -378,7 +378,7 @@ public class WeComApi {
 
         builder.append("> **提醒**：").append(card.getRiskHint()).append("\n\n")
                 .append("<font color=\"comment\">仅供盘中研究与信息跟踪，不构成任何投资建议。</font>");
-        return builder.toString();
+        return AStockEngagementMarkdown.appendRealtimeTail(builder.toString(), card.getStockName());
     }
 
     private List<String> prepareContentsForSend(String content, String messageType, MarketType marketType) {
