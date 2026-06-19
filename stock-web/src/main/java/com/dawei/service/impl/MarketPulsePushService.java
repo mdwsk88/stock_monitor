@@ -8,6 +8,7 @@ import com.dawei.entity.MarketSnapshotHealth;
 import com.dawei.entity.MarketState;
 import com.dawei.service.AStockPushLogService;
 import com.dawei.service.MarketStateService;
+import com.dawei.utils.AStockEngagementMarkdown;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -103,7 +104,7 @@ public class MarketPulsePushService {
             default -> "维持中性观察。";
         };
 
-        return title + "\n\n"
+        String markdown = title + "\n\n"
                 + "> **状态**：<font color=\"" + (defensive ? "warning" : "info") + "\">"
                 + snapshot.getMarketState().getLabel() + "</font>\n"
                 + "> **指数**：上证 " + formatPct(snapshot.getShChangePct())
@@ -117,6 +118,7 @@ public class MarketPulsePushService {
                 + "> **执行提示**：" + action + "\n"
                 + "> **触发时间**：" + now.format(TIME_FORMATTER) + "\n\n"
                 + "<font color=\"comment\">市场状态脉冲由指数与市场宽度联合判定，仅供盘中研究使用。</font>";
+        return AStockEngagementMarkdown.appendRealtimeTail(markdown, snapshot.getMarketState().getLabel());
     }
 
     private AStockPushLog buildPushLog(String pushKey,

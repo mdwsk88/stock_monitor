@@ -9,7 +9,7 @@ DROP TABLE IF EXISTS `us_stock_rss`;
 
 CREATE TABLE `us_stock_rss` (
   `id` varchar(32) NOT NULL COMMENT '主键ID',
-  `stock_code` varchar(20) DEFAULT NULL COMMENT '股票代码',
+  `stock_code` varchar(20) NOT NULL DEFAULT '' COMMENT '股票代码',
   `title` varchar(500) DEFAULT NULL COMMENT '英文标题',
   `title_zh` varchar(500) DEFAULT NULL COMMENT '中文标题',
   `link` varchar(500) DEFAULT NULL COMMENT '公告链接',
@@ -222,6 +222,8 @@ CREATE TABLE `a_stock_push_decision_log` (
 -- 9. 主题观察池映射表
 -- --------------------------------------------------------
 DROP TABLE IF EXISTS `a_theme_watchlist`;
+DROP TABLE IF EXISTS `a_wecom_subscription`;
+DROP TABLE IF EXISTS `a_wecom_feedback`;
 
 CREATE TABLE `a_theme_watchlist` (
   `id` varchar(32) NOT NULL COMMENT '主键ID',
@@ -236,3 +238,36 @@ CREATE TABLE `a_theme_watchlist` (
   UNIQUE KEY `uk_theme_stock_code` (`theme_name`,`stock_code`),
   KEY `idx_enabled_theme_name` (`enabled`,`theme_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='主题观察池映射表';
+
+CREATE TABLE `a_wecom_subscription` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `subscription_type` varchar(20) NOT NULL COMMENT '关注类型：THEME/STOCK',
+  `target_name` varchar(80) NOT NULL COMMENT '关注对象名称',
+  `stock_code` varchar(20) DEFAULT NULL COMMENT '股票代码',
+  `enabled` tinyint(1) DEFAULT 1 COMMENT '是否启用',
+  `source` varchar(50) DEFAULT NULL COMMENT '来源：机器人/原型页/运营台',
+  `reason` varchar(255) DEFAULT NULL COMMENT '关注原因',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_wecom_subscription_target` (`subscription_type`,`target_name`,`stock_code`),
+  KEY `idx_wecom_subscription_enabled` (`enabled`,`subscription_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='企业微信群关注项';
+
+CREATE TABLE `a_wecom_feedback` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `feedback_type` varchar(20) NOT NULL COMMENT '反馈类型：USEFUL/NOISY/LATE/IRRELEVANT/FOLLOW/OTHER',
+  `target_type` varchar(20) DEFAULT NULL COMMENT '对象类型：PUSH/THEME/STOCK',
+  `target_name` varchar(100) DEFAULT NULL COMMENT '对象名称',
+  `stock_code` varchar(20) DEFAULT NULL COMMENT '股票代码',
+  `theme_name` varchar(80) DEFAULT NULL COMMENT '主题名称',
+  `push_type` varchar(40) DEFAULT NULL COMMENT '推送类型',
+  `push_key` varchar(180) DEFAULT NULL COMMENT '推送去重键',
+  `source` varchar(50) DEFAULT NULL COMMENT '来源：机器人/原型页/运营台',
+  `comment` varchar(500) DEFAULT NULL COMMENT '补充说明',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_wecom_feedback_time` (`create_time`),
+  KEY `idx_wecom_feedback_type_time` (`feedback_type`,`create_time`),
+  KEY `idx_wecom_feedback_target` (`target_type`,`target_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='企业微信群推送轻反馈';

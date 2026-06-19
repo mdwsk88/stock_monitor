@@ -8,10 +8,10 @@ spring:
   ai:
     openai:
       api-key: ${STOCK_OPENAI_API_KEY:${OPENAI_API_KEY:}}
-      base-url: ${STOCK_OPENAI_BASE_URL:${OPENAI_BASE_URL:https://api.openai.com}}
+      base-url: ${STOCK_OPENAI_BASE_URL:${OPENAI_BASE_URL:https://api.deepseek.com}}
       chat:
         options:
-          model: ${STOCK_OPENAI_CHAT_MODEL:${OPENAI_CHAT_MODEL:gpt-4o-mini}}
+          model: ${STOCK_OPENAI_CHAT_MODEL:${OPENAI_CHAT_MODEL:deepseek-v4-flash}}
           temperature: 0.7
 
 logging:
@@ -171,6 +171,12 @@ stock:
     macro-realtime-push-cooldown-minutes: 90
     # 宏观实时回扫窗口：定时补扫最近事件，兜住抓取时点丢失
     macro-realtime-scan-window-minutes: 60
+    # 盘中宏观共振卡片最多展示几只股票，避免一条消息塞满整个群
+    macro-realtime-resonance-stock-limit: 5
+    # 盘中翻旧账时，回看多少天内的 A 股高分公告
+    macro-realtime-resonance-lookback-days: 30
+    # 盘中翻旧账的历史公告最低分，低于这个分数就不拿来当“共振证据”
+    macro-realtime-resonance-notice-signal-threshold: 75
     # 黑名单关键词列表 - 用于过滤行政流水账类噪音
     # 已内置以下类别：会议类、人事变动类、资金类（日常运营）、自查/合规类、关联交易/担保类、期权激励类、质押类、其他常规行政公告
     # 如需自定义，可在此覆盖或添加

@@ -72,7 +72,7 @@ public class OpsDashboardController {
 
     @PostMapping("/actions/run-macro-scan")
     public Map<String, Object> runMacroScan() {
-        MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEvents();
+        MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEventsManually();
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("message", scanResult != null && scanResult.getPushedCount() != null && scanResult.getPushedCount() > 0

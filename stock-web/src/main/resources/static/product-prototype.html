@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>A股研究助理产品原型</title>
+    <style>
+        :root {
+            --ink: #17130f;
+            --muted: #70685f;
+            --paper: #f5efe4;
+            --paper-soft: #fffaf0;
+            --line: rgba(23, 19, 15, 0.12);
+            --red: #c64224;
+            --red-soft: #ffe2d6;
+            --green: #096f5a;
+            --green-soft: #dff3e9;
+            --gold: #c79633;
+            --blue: #245c7a;
+            --shadow: 0 28px 90px rgba(42, 34, 24, 0.18);
+            --radius-xl: 34px;
+            --radius-lg: 24px;
+            --radius-md: 18px;
+            --mono: "SF Mono", "Menlo", "Monaco", monospace;
+            --display: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+            --body: "Hiragino Sans GB", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            font-family: var(--body);
+            background:
+                radial-gradient(circle at 10% 12%, rgba(199, 150, 51, 0.22), transparent 30%),
+                radial-gradient(circle at 88% 10%, rgba(9, 111, 90, 0.16), transparent 28%),
+                linear-gradient(135deg, #efe6d7 0%, #fbf6ea 48%, #eadfce 100%);
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.4;
+            background-image:
+                linear-gradient(rgba(23, 19, 15, 0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(23, 19, 15, 0.03) 1px, transparent 1px);
+            background-size: 42px 42px;
+            mask-image: linear-gradient(to bottom, #000, transparent 82%);
+        }
+
+        button {
+            color: inherit;
+            font: inherit;
+        }
+
+        .shell {
+            width: min(1440px, calc(100vw - 40px));
+            margin: 0 auto;
+            padding: 28px 0 42px;
+        }
+
+        .hero {
+            position: relative;
+            display: grid;
+            grid-template-columns: 1.08fr 0.92fr;
+            gap: 28px;
+            min-height: 330px;
+            padding: 34px;
+            border: 1px solid rgba(23, 19, 15, 0.12);
+            border-radius: 42px;
+            background:
+                linear-gradient(120deg, rgba(255, 250, 240, 0.92), rgba(255, 250, 240, 0.6)),
+                radial-gradient(circle at 72% 40%, rgba(198, 66, 36, 0.13), transparent 34%);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .hero::after {
+            content: "WE COM";
+            position: absolute;
+            right: -20px;
+            bottom: -36px;
+            color: rgba(23, 19, 15, 0.045);
+            font-family: var(--display);
+            font-size: clamp(88px, 12vw, 170px);
+            font-weight: 900;
+            letter-spacing: -0.08em;
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            gap: 10px;
+            align-items: center;
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+        }
+
+        .eyebrow::before {
+            content: "";
+            width: 34px;
+            height: 2px;
+            background: var(--red);
+        }
+
+        h1 {
+            max-width: 760px;
+            margin: 18px 0 18px;
+            font-family: var(--display);
+            font-size: clamp(52px, 7vw, 108px);
+            line-height: 0.9;
+            letter-spacing: -0.08em;
+        }
+
+        .hero-copy {
+            max-width: 780px;
+            margin: 0;
+            color: #50483f;
+            font-size: 18px;
+            line-height: 1.9;
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .chip,
+        .action-button {
+            border: 1px solid rgba(23, 19, 15, 0.13);
+            border-radius: 999px;
+            background: rgba(255, 250, 240, 0.72);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.7);
+        }
+
+        .action-button {
+            cursor: pointer;
+            padding: 13px 18px;
+            font-weight: 900;
+            transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+
+        .action-button.primary {
+            color: #fff8ed;
+            border-color: transparent;
+            background: var(--ink);
+        }
+
+        .action-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .brief-card {
+            align-self: stretch;
+            display: grid;
+            gap: 14px;
+            padding: 22px;
+            border-radius: 30px;
+            color: #f6efe6;
+            background:
+                linear-gradient(160deg, rgba(23, 19, 15, 0.96), rgba(55, 46, 38, 0.92)),
+                radial-gradient(circle at 20% 12%, rgba(199, 150, 51, 0.22), transparent 34%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.12);
+            z-index: 1;
+        }
+
+        .brief-card h2 {
+            margin: 0;
+            font-family: var(--display);
+            font-size: 36px;
+            letter-spacing: -0.06em;
+        }
+
+        .brief-list {
+            display: grid;
+            gap: 10px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .brief-list li {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            align-items: start;
+            color: rgba(255, 248, 237, 0.82);
+            line-height: 1.65;
+        }
+
+        .brief-list strong {
+            color: #fff8ed;
+        }
+
+        .prototype-grid {
+            display: grid;
+            grid-template-columns: 430px 1fr;
+            gap: 28px;
+            margin-top: 28px;
+        }
+
+        .phone {
+            position: sticky;
+            top: 24px;
+            height: calc(100vh - 48px);
+            min-height: 760px;
+            padding: 16px;
+            border-radius: 48px;
+            background: #111;
+            box-shadow: 0 42px 90px rgba(23, 19, 15, 0.28);
+        }
+
+        .phone-screen {
+            height: 100%;
+            overflow: hidden;
+            border-radius: 36px;
+            background: #e9edf0;
+        }
+
+        .phone-top {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 18px 8px;
+            color: #111;
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 900;
+            background: #f7f7f7;
+        }
+
+        .group-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: 1px solid #d9dee2;
+            background: #f7f7f7;
+        }
+
+        .back {
+            width: 10px;
+            height: 10px;
+            border-left: 2px solid #111;
+            border-bottom: 2px solid #111;
+            transform: rotate(45deg);
+        }
+
+        .avatar {
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 900;
+            background: linear-gradient(135deg, #1f9d72, #2563eb);
+        }
+
+        .group-name {
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .group-sub {
+            color: #7b838b;
+            font-size: 11px;
+        }
+
+        .chat {
+            height: calc(100% - 104px);
+            overflow: auto;
+            padding: 18px 12px 24px;
+        }
+
+        .time-divider {
+            width: fit-content;
+            margin: 0 auto 14px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            color: #8b9298;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .message-row {
+            display: grid;
+            grid-template-columns: 36px 1fr;
+            gap: 8px;
+            align-items: start;
+            margin-bottom: 14px;
+            animation: rise 0.44s ease both;
+        }
+
+        .bot-badge {
+            display: grid;
+            place-items: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            color: #fff;
+            background: #1d9bf0;
+            box-shadow: 0 8px 18px rgba(29, 155, 240, 0.26);
+        }
+
+        .bubble {
+            padding: 14px;
+            border-radius: 6px 18px 18px;
+            background: #fff;
+            box-shadow: 0 8px 20px rgba(48, 61, 70, 0.08);
+        }
+
+        .bubble h3 {
+            margin: 0 0 8px;
+            font-size: 18px;
+            line-height: 1.25;
+        }
+
+        .bubble p {
+            margin: 6px 0;
+            color: #303944;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .bubble-section {
+            margin: 10px 0;
+            padding-left: 10px;
+            border-left: 3px solid #e0e5e8;
+        }
+
+        .bubble-label {
+            color: #9ca3aa;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .bubble-strong {
+            color: var(--green);
+            font-weight: 900;
+        }
+
+        .bubble-risk {
+            color: var(--red);
+            font-weight: 900;
+        }
+
+        .reply-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .reply-chip {
+            cursor: pointer;
+            padding: 7px 9px;
+            border: 1px solid #dce2e7;
+            border-radius: 999px;
+            color: #31515f;
+            font-size: 12px;
+            font-weight: 800;
+            background: #f8fafb;
+        }
+
+        .panel-stack {
+            display: grid;
+            gap: 22px;
+        }
+
+        .section-card {
+            position: relative;
+            overflow: hidden;
+            padding: 26px;
+            border: 1px solid rgba(23, 19, 15, 0.12);
+            border-radius: var(--radius-xl);
+            background: rgba(255, 250, 240, 0.76);
+            box-shadow: 0 24px 70px rgba(42, 34, 24, 0.1);
+        }
+
+        .section-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(90deg, rgba(9, 111, 90, 0.08), transparent 18%),
+                radial-gradient(circle at 96% 2%, rgba(198, 66, 36, 0.12), transparent 22%);
+        }
+
+        .section-head {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            align-items: end;
+            margin-bottom: 20px;
+        }
+
+        .section-head h2 {
+            margin: 0;
+            font-family: var(--display);
+            font-size: clamp(30px, 3vw, 48px);
+            letter-spacing: -0.06em;
+        }
+
+        .section-head p {
+            max-width: 470px;
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .card-grid {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+        }
+
+        .feature-tile {
+            min-height: 210px;
+            padding: 18px;
+            border: 1px solid rgba(23, 19, 15, 0.1);
+            border-radius: var(--radius-lg);
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .feature-tile.wide {
+            grid-column: span 2;
+        }
+
+        .tile-kicker {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .feature-tile h3 {
+            margin: 14px 0 10px;
+            font-size: 21px;
+            line-height: 1.25;
+        }
+
+        .feature-tile p {
+            margin: 0;
+            color: #5f574e;
+            line-height: 1.72;
+        }
+
+        .stamp {
+            display: inline-grid;
+            place-items: center;
+            min-width: 50px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            color: var(--green);
+            background: var(--green-soft);
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .stamp.red {
+            color: var(--red);
+            background: var(--red-soft);
+        }
+
+        .subscription-board {
+            position: relative;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .watch-list,
+        .memory-feed {
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            background: rgba(23, 19, 15, 0.92);
+            color: #fff8ed;
+        }
+
+        .watch-list h3,
+        .memory-feed h3 {
+            margin: 0 0 14px;
+            font-size: 20px;
+        }
+
+        .watch-item {
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 12px 0;
+            border-top: 1px solid rgba(255, 248, 237, 0.12);
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--gold);
+            box-shadow: 0 0 0 5px rgba(199, 150, 51, 0.16);
+        }
+
+        .watch-item.active .dot {
+            background: #2dd4bf;
+            box-shadow: 0 0 0 5px rgba(45, 212, 191, 0.16);
+        }
+
+        .switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            border-radius: 999px;
+            background: rgba(255, 248, 237, 0.18);
+        }
+
+        .switch::after {
+            content: "";
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 999px;
+            background: #fff8ed;
+            transition: transform 0.22s ease;
+        }
+
+        .watch-item.active .switch {
+            background: var(--green);
+        }
+
+        .watch-item.active .switch::after {
+            transform: translateX(20px);
+        }
+
+        .memory-step {
+            display: grid;
+            grid-template-columns: 58px 1fr;
+            gap: 12px;
+            padding: 12px 0;
+            border-top: 1px solid rgba(255, 248, 237, 0.12);
+        }
+
+        .memory-time {
+            color: #e8c989;
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .memory-step p {
+            margin: 0;
+            color: rgba(255, 248, 237, 0.78);
+            line-height: 1.6;
+        }
+
+        .feedback-grid {
+            position: relative;
+            display: grid;
+            grid-template-columns: 0.9fr 1.1fr;
+            gap: 16px;
+        }
+
+        .reaction-pad {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .reaction {
+            cursor: pointer;
+            min-height: 116px;
+            padding: 16px;
+            border: 1px solid rgba(23, 19, 15, 0.1);
+            border-radius: var(--radius-lg);
+            text-align: left;
+            background: rgba(255, 255, 255, 0.62);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .reaction:hover {
+            transform: translateY(-3px) rotate(-0.6deg);
+            box-shadow: 0 16px 32px rgba(42, 34, 24, 0.12);
+        }
+
+        .reaction b {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 18px;
+        }
+
+        .reaction span {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .metric-board {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .metric {
+            padding: 18px;
+            border-radius: var(--radius-lg);
+            background: #fff;
+            border: 1px solid rgba(23, 19, 15, 0.1);
+        }
+
+        .metric-value {
+            font-family: var(--display);
+            font-size: 44px;
+            line-height: 1;
+            letter-spacing: -0.08em;
+        }
+
+        .metric-label {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .demo-strip {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .demo-card {
+            cursor: pointer;
+            padding: 18px;
+            min-height: 170px;
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(23, 19, 15, 0.12);
+            background: rgba(255, 255, 255, 0.65);
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .demo-card:hover {
+            transform: translateY(-4px);
+            background: #fff;
+        }
+
+        .demo-card h3 {
+            margin: 12px 0 8px;
+            font-size: 19px;
+        }
+
+        .demo-card p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .toast {
+            position: fixed;
+            right: 28px;
+            bottom: 28px;
+            z-index: 10;
+            max-width: 320px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            color: #fff8ed;
+            background: rgba(23, 19, 15, 0.92);
+            box-shadow: 0 18px 45px rgba(23, 19, 15, 0.24);
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity 0.22s ease, transform 0.22s ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes rise {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 1120px) {
+            .hero,
+            .prototype-grid,
+            .feedback-grid,
+            .subscription-board {
+                grid-template-columns: 1fr;
+            }
+
+            .phone {
+                position: relative;
+                top: auto;
+                height: 760px;
+            }
+
+            .card-grid,
+            .demo-strip {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 720px) {
+            .shell {
+                width: min(100% - 24px, 1440px);
+                padding-top: 12px;
+            }
+
+            .hero,
+            .section-card {
+                padding: 22px;
+                border-radius: 28px;
+            }
+
+            h1 {
+                font-size: 54px;
+            }
+
+            .phone {
+                min-height: 690px;
+                height: 690px;
+                padding: 10px;
+                border-radius: 34px;
+            }
+
+            .card-grid,
+            .demo-strip,
+            .metric-board,
+            .reaction-pad {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-tile.wide {
+                grid-column: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <section class="hero">
+        <div>
+            <div class="eyebrow">Product Prototype</div>
+            <h1>把群推送升级成会记忆的 A 股研究助理</h1>
+            <p class="hero-copy">
+                这个原型展示下一阶段产品方向：企业微信仍然是入口，但消息不再只是“日报/晚报广播”，
+                而是可追问、可订阅、可反馈、可沉淀每日记忆的研究工作流。
+            </p>
+            <div class="hero-actions">
+                <button class="action-button primary" data-demo="morning">演示早报卡片</button>
+                <button class="action-button" data-demo="intraday">演示盘中突发</button>
+                <button class="action-button" data-demo="risk">演示风险提醒</button>
+            </div>
+        </div>
+        <aside class="brief-card">
+            <div class="eyebrow">PM Lens</div>
+            <h2>产品目标不是多发消息，而是让用户少错过、少误判。</h2>
+            <ul class="brief-list">
+                <li><strong>01</strong><span>每条推送都解释“为什么现在值得看”。</span></li>
+                <li><strong>02</strong><span>用户能一键追问，把被动接收变成主动研究。</span></li>
+                <li><strong>03</strong><span>系统记住用户关注的股票和主题，减少无关噪音。</span></li>
+                <li><strong>04</strong><span>反馈会进入指标闭环，持续校准阈值和模板。</span></li>
+            </ul>
+        </aside>
+    </section>
+
+    <section class="prototype-grid">
+        <aside class="phone" aria-label="企业微信消息模拟">
+            <div class="phone-screen">
+                <div class="phone-top">
+                    <span>14:28</span>
+                    <span>5G 88%</span>
+                </div>
+                <div class="group-bar">
+                    <span class="back"></span>
+                    <span class="avatar">股</span>
+                    <div>
+                        <div class="group-name">A 股研究雷达 · 内测群</div>
+                        <div class="group-sub">Stock expert 已接入 MCP 研究工具</div>
+                    </div>
+                </div>
+                <div id="chat" class="chat">
+                    <div class="time-divider">今天 09:02</div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-stack">
+            <section class="section-card">
+                <div class="section-head">
+                    <div>
+                        <div class="eyebrow">Message System</div>
+                        <h2>一屏研究卡片</h2>
+                    </div>
+                    <p>固定消息结构，减少大段 AI 作文。用户先看到结论，再看到证据、风险和下一步可追问入口。</p>
+                </div>
+                <div class="card-grid">
+                    <article class="feature-tile wide">
+                        <div class="tile-kicker">Template <span class="stamp">建议优先</span></div>
+                        <h3>结论 -> 为什么现在 -> 证据 -> 反证风险 -> 继续追问</h3>
+                        <p>
+                            用统一模板承接早报、盘中、晚报和风险速递。每条消息必须有“为什么现在”，避免用户只看到一堆股票名。
+                        </p>
+                    </article>
+                    <article class="feature-tile">
+                        <div class="tile-kicker">Noise Control <span class="stamp red">少而精</span></div>
+                        <h3>只推三类消息</h3>
+                        <p>我的关注发生变化、全市场主线变化、硬风险出现。其余内容放到日报或用户追问里。</p>
+                    </article>
+                    <article class="feature-tile">
+                        <div class="tile-kicker">Follow-up</div>
+                        <h3>每条消息自带追问</h3>
+                        <p>让用户不用思考怎么问，直接点/复制“看同主线”“看反向风险”“为什么上榜”。</p>
+                    </article>
+                    <article class="feature-tile">
+                        <div class="tile-kicker">Trust</div>
+                        <h3>显式标出证据和推断</h3>
+                        <p>事实、聚合分、模型推断分开写，长期建立用户对机器人边界的信任。</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <div class="section-head">
+                    <div>
+                        <div class="eyebrow">Personalization</div>
+                        <h2>关注池与每日记忆</h2>
+                    </div>
+                    <p>把已有主题观察池产品化。群用户可以关注股票或题材，系统按关注池生成更相关的推送。</p>
+                </div>
+                <div class="subscription-board">
+                    <div class="watch-list">
+                        <h3>我的关注池</h3>
+                        <div class="watch-item active" data-watch="低空经济">
+                            <span class="dot"></span>
+                            <div>
+                                <strong>低空经济</strong>
+                                <div class="group-sub">政策 + 订单 + 主线共振</div>
+                            </div>
+                            <span class="switch"></span>
+                        </div>
+                        <div class="watch-item active" data-watch="算力">
+                            <span class="dot"></span>
+                            <div>
+                                <strong>算力</strong>
+                                <div class="group-sub">宏观主题高频映射</div>
+                            </div>
+                            <span class="switch"></span>
+                        </div>
+                        <div class="watch-item" data-watch="机器人">
+                            <span class="dot"></span>
+                            <div>
+                                <strong>机器人</strong>
+                                <div class="group-sub">暂不主动推送</div>
+                            </div>
+                            <span class="switch"></span>
+                        </div>
+                        <div class="watch-item active" data-watch="宗申动力">
+                            <span class="dot"></span>
+                            <div>
+                                <strong>宗申动力</strong>
+                                <div class="group-sub">自选股风险和共振提醒</div>
+                            </div>
+                            <span class="switch"></span>
+                        </div>
+                    </div>
+                    <div class="memory-feed">
+                        <h3>今日记忆</h3>
+                        <div class="memory-step">
+                            <span class="memory-time">08:30</span>
+                            <p>早报提示低空经济和算力是今日主线候选，风险集中在退市和监管处罚。</p>
+                        </div>
+                        <div class="memory-step">
+                            <span class="memory-time">10:18</span>
+                            <p>盘中快讯命中低空经济政策催化，系统只推关注池相关标的。</p>
+                        </div>
+                        <div class="memory-step">
+                            <span class="memory-time">15:30</span>
+                            <p>晚报对早盘线索做兑现/证伪复盘，保留明日继续跟踪项。</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <div class="section-head">
+                    <div>
+                        <div class="eyebrow">Feedback Loop</div>
+                        <h2>从“我觉得不错”变成可度量</h2>
+                    </div>
+                    <p>用户反馈不需要复杂，只要轻量。每次反馈都能变成阈值、模板和订阅策略的校准信号。</p>
+                </div>
+                <div class="feedback-grid">
+                    <div class="reaction-pad">
+                        <button class="reaction" data-feedback="useful">
+                            <b>有用</b>
+                            <span>这条消息解决了“为什么值得看”。</span>
+                        </button>
+                        <button class="reaction" data-feedback="noisy">
+                            <b>太吵</b>
+                            <span>同类消息近期过多，需要提高阈值。</span>
+                        </button>
+                        <button class="reaction" data-feedback="late">
+                            <b>太晚</b>
+                            <span>事件已经发酵完，时效性不足。</span>
+                        </button>
+                        <button class="reaction" data-feedback="follow">
+                            <b>继续关注</b>
+                            <span>加入关注池，后续只推变化。</span>
+                        </button>
+                    </div>
+                    <div class="metric-board">
+                        <article class="metric">
+                            <div id="metricUseful" class="metric-value">82%</div>
+                            <div class="metric-label">近 7 日有用率，来自群内轻反馈。</div>
+                        </article>
+                        <article class="metric">
+                            <div id="metricNoise" class="metric-value">11%</div>
+                            <div class="metric-label">噪音反馈占比，用于自动建议上调阈值。</div>
+                        </article>
+                        <article class="metric">
+                            <div class="metric-value">2.4</div>
+                            <div class="metric-label">每条推送平均追问数，衡量互动价值。</div>
+                        </article>
+                        <article class="metric">
+                            <div class="metric-value">37</div>
+                            <div class="metric-label">活跃关注项，股票与主题合计。</div>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="section-card">
+                <div class="section-head">
+                    <div>
+                        <div class="eyebrow">Demo Paths</div>
+                        <h2>对外演示四条路径</h2>
+                    </div>
+                    <p>适合给别人展示项目时按顺序点击：先展示日常价值，再展示盘中惊喜，最后展示追问和反馈闭环。</p>
+                </div>
+                <div class="demo-strip">
+                    <article class="demo-card" data-demo="morning">
+                        <span class="stamp">01</span>
+                        <h3>盘前 60 秒</h3>
+                        <p>开盘前看今日主线、关注池变化和风险边界。</p>
+                    </article>
+                    <article class="demo-card" data-demo="intraday">
+                        <span class="stamp">02</span>
+                        <h3>盘中突发</h3>
+                        <p>宏观快讯命中历史高分公告，推送共振候选。</p>
+                    </article>
+                    <article class="demo-card" data-demo="risk">
+                        <span class="stamp red">03</span>
+                        <h3>风险速递</h3>
+                        <p>收盘后公告密集期，只推硬风险和强催化。</p>
+                    </article>
+                    <article class="demo-card" data-demo="feedback">
+                        <span class="stamp">04</span>
+                        <h3>反馈调参</h3>
+                        <p>用户点“太吵/有用”，运营看板出现质量指标。</p>
+                    </article>
+                </div>
+            </section>
+        </div>
+    </section>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+    const chat = document.getElementById('chat');
+    const toast = document.getElementById('toast');
+    const metricUseful = document.getElementById('metricUseful');
+    const metricNoise = document.getElementById('metricNoise');
+    const API = {
+        summary: '/api/product-loop/summary',
+        feedback: '/api/product-loop/feedback',
+        subscriptions: '/api/product-loop/subscriptions',
+        demoPush: '/api/product-loop/demo-push'
+    };
+
+    const demoMessages = {
+        morning: {
+            title: '🌅 A股盘前研究卡 | 2026-06-19',
+            intro: '今日不做长篇作文，只给你开盘前最该盯的三件事。',
+            sections: [
+                ['结论', '主线候选偏向 <span class="bubble-strong">低空经济 + 算力</span>，但需要等待开盘后资金扩散确认。'],
+                ['为什么现在', '过去 24 小时政策线索和高分公告同时出现，属于“公告事件 + 宏观主题”共振。'],
+                ['关键证据', '低空经济主题强度 96 分；算力主题强度 92 分；关注池命中 4 只股票。'],
+                ['反向风险', '如果开盘 30 分钟内没有板块扩散，只保留核心标的观察，不追后排。']
+            ],
+            chips: ['看低空经济共振股', '解释为什么上榜', '只看我的关注池']
+        },
+        intraday: {
+            title: '⚡ 盘中风口瞬时共振',
+            intro: '突发政策快讯命中你的关注池，系统只发一次，不刷屏。',
+            sections: [
+                ['突发事件', '某部委发布低空经济基础设施试点推进文件，发布时间 10:18。'],
+                ['为什么现在', '这不是单条新闻播报，而是命中了历史高分公告和主题观察池。'],
+                ['AI 记忆库匹配', '<span class="bubble-strong">宗申动力</span>、<span class="bubble-strong">中信海直</span> 近期均有相关事件映射。'],
+                ['提醒', '盘中催化只代表关注度升温，不代表确定性交易机会。']
+            ],
+            chips: ['看同主题还有谁', '看风险敞口', '加入低空经济关注']
+        },
+        risk: {
+            title: '🌇 A股盘后风险速递',
+            intro: '收盘后公告窗口扫描完成，只展示硬风险和强催化。',
+            sections: [
+                ['结论', '今日风险主要集中在 <span class="bubble-risk">退市风险、监管处罚、减持</span> 三类。'],
+                ['为什么现在', '这些公告通常在 15:00 后集中披露，适合盘后统一处理，不打扰盘中。'],
+                ['风险证据', '新增高优先级风险 3 条，其中 2 条命中关注池。'],
+                ['下一步', '晚报会把早盘线索与盘后新增风险合并成明日观察清单。']
+            ],
+            chips: ['只看我的自选风险', '解释监管处罚影响', '明天还要盯什么']
+        },
+        feedback: {
+            title: '📊 推送质量日报',
+            intro: '系统不只记录发了多少条，也记录用户是否真的觉得有用。',
+            sections: [
+                ['今日互动', '7 条推送产生 19 次追问，最高频问题是“为什么上榜”。'],
+                ['用户反馈', '<span class="bubble-strong">有用率 82%</span>，噪音反馈 11%，较昨日下降 4%。'],
+                ['调参建议', '宏观机会阈值保持不变，普通公告机会阈值建议上调 3 分。'],
+                ['产品结论', '用户更喜欢“我的关注池变化”和“风险提前提醒”，不喜欢泛泛主线广播。']
+            ],
+            chips: ['查看太吵原因', '查看有用样本', '生成下周优化建议']
+        }
+    };
+
+    function renderMessage(type = 'morning') {
+        const message = demoMessages[type] || demoMessages.morning;
+        const row = document.createElement('div');
+        row.className = 'message-row';
+        row.innerHTML = `
+            <div class="bot-badge">AI</div>
+            <div class="bubble">
+                <h3>${message.title}</h3>
+                <p>${message.intro}</p>
+                ${message.sections.map(([label, body]) => `
+                    <div class="bubble-section">
+                        <div class="bubble-label">${label}</div>
+                        <p>${body}</p>
+                    </div>
+                `).join('')}
+                <div class="reply-chips">
+                    ${message.chips.map(chip => `<button class="reply-chip" data-chip="${chip}">@Stock expert ${chip}</button>`).join('')}
+                </div>
+            </div>
+        `;
+        chat.appendChild(row);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function renderFollowUp(text) {
+        const row = document.createElement('div');
+        row.className = 'message-row';
+        row.innerHTML = `
+            <div class="bot-badge">AI</div>
+            <div class="bubble">
+                <h3>追问已生成</h3>
+                <p>你刚刚选择了：<strong>${escapeHtml(text)}</strong></p>
+                <div class="bubble-section">
+                    <div class="bubble-label">原型效果</div>
+                    <p>真实产品里，这里会调用 MCP 工具，把对应股票、主题或风险榜结果拉出来继续解释。</p>
+                </div>
+            </div>
+        `;
+        chat.appendChild(row);
+        chat.scrollTop = chat.scrollHeight;
+        showToast('追问入口会把群推送自然转成 MCP 问答。');
+    }
+
+    function showToast(text) {
+        toast.textContent = text;
+        toast.classList.add('show');
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function escapeHtml(value) {
+        return value.replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char]);
+    }
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {})
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async function loadLiveSummary() {
+        try {
+            const response = await fetch(API.summary);
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            const stats = data.feedbackStats || {};
+            if (stats.usefulRate > 0) {
+                metricUseful.textContent = `${stats.usefulRate}%`;
+            }
+            if (stats.noiseRate > 0) {
+                metricNoise.textContent = `${stats.noiseRate}%`;
+            }
+            const subscriptions = data.subscriptions || [];
+            subscriptions.slice(0, 4).forEach(item => {
+                const target = document.querySelector(`[data-watch="${item.targetName}"]`);
+                if (target) {
+                    target.classList.toggle('active', Number(item.enabled) > 0);
+                }
+            });
+        } catch (error) {
+            console.debug('Live summary unavailable, prototype remains in demo mode.', error);
+        }
+    }
+
+    async function triggerDemoPush(type) {
+        try {
+            const response = await fetch(`${API.demoPush}?type=${encodeURIComponent(type)}`, { method: 'POST' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            showToast(data.message || '演示推送已发送。');
+        } catch (error) {
+            showToast('后端演示接口暂不可用，已保留左侧本地模拟。');
+        }
+    }
+
+    async function recordSubscription(name, enabled) {
+        try {
+            const isStock = /[\d*ST]/.test(name) && name.length <= 8;
+            await postJson(API.subscriptions, {
+                subscriptionType: isStock ? 'STOCK' : 'THEME',
+                targetName: name,
+                enabled: enabled ? 1 : 0,
+                source: 'product-prototype',
+                reason: '原型页手动切换'
+            });
+        } catch (error) {
+            console.debug('Subscription write failed.', error);
+        }
+    }
+
+    async function recordFeedback(type) {
+        try {
+            await postJson(API.feedback, {
+                feedbackType: type,
+                targetType: 'PUSH',
+                targetName: '产品原型演示推送',
+                source: 'product-prototype'
+            });
+        } catch (error) {
+            console.debug('Feedback write failed.', error);
+        }
+    }
+
+    document.querySelectorAll('[data-demo]').forEach(item => {
+        item.addEventListener('click', () => {
+            const type = item.getAttribute('data-demo');
+            renderMessage(type);
+            triggerDemoPush(type);
+        });
+    });
+
+    document.querySelectorAll('.watch-item').forEach(item => {
+        item.addEventListener('click', () => {
+            item.classList.toggle('active');
+            const name = item.getAttribute('data-watch');
+            const active = item.classList.contains('active');
+            recordSubscription(name, active);
+            showToast(`${name} ${active ? '已加入' : '已移出'}关注池。`);
+        });
+    });
+
+    document.querySelectorAll('[data-feedback]').forEach(item => {
+        item.addEventListener('click', () => {
+            const type = item.getAttribute('data-feedback');
+            if (type === 'useful') {
+                metricUseful.textContent = '83%';
+                recordFeedback('USEFUL');
+                showToast('已记录“有用”。后续同类推送权重会上升。');
+            } else if (type === 'noisy') {
+                metricNoise.textContent = '12%';
+                recordFeedback('NOISY');
+                showToast('已记录“太吵”。运营侧会看到阈值上调建议。');
+            } else if (type === 'late') {
+                recordFeedback('LATE');
+                showToast('已记录“太晚”。系统会统计事件发布时间与推送延迟。');
+            } else {
+                recordFeedback('FOLLOW');
+                showToast('已加入继续关注，后续只推变化而不是重复刷屏。');
+            }
+        });
+    });
+
+    chat.addEventListener('click', event => {
+        const chip = event.target.closest('[data-chip]');
+        if (!chip) {
+            return;
+        }
+        renderFollowUp(chip.getAttribute('data-chip'));
+    });
+
+    renderMessage('morning');
+    loadLiveSummary();
+</script>
+</body>
+</html>

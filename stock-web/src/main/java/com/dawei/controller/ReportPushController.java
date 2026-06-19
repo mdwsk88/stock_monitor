@@ -154,7 +154,7 @@ public class ReportPushController {
         Map<String, Object> result = new HashMap<>();
         try {
             log.info("手动触发宏观快讯实时回扫");
-            MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEvents();
+            MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEventsManually();
             result.put("success", true);
             result.put("message", resolveMacroRealtimeMessage(scanResult));
             result.put("data", scanResult);
@@ -247,7 +247,7 @@ public class ReportPushController {
 
             // 宏观快讯实时回扫
             try {
-                MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEvents();
+                MacroRealtimePushScanResult scanResult = macroRealtimePushService.scanAndPushRecentEventsManually();
                 details.put("macroRealtime", Map.of(
                         "success", true,
                         "message", resolveMacroRealtimeMessage(scanResult),

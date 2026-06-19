@@ -276,6 +276,21 @@ public class StockFilterConfig {
     private int macroRealtimeScanWindowMinutes = 60;
 
     /**
+     * 盘中宏观共振卡片最多展示的股票数
+     */
+    private int macroRealtimeResonanceStockLimit = 5;
+
+    /**
+     * 盘中宏观共振翻旧账时回看的历史公告天数
+     */
+    private int macroRealtimeResonanceLookbackDays = 30;
+
+    /**
+     * 盘中宏观共振翻旧账时，历史公告最低信号分
+     */
+    private int macroRealtimeResonanceNoticeSignalThreshold = 75;
+
+    /**
      * 黑名单关键词列表 - 用于过滤"行政流水账"类噪音公告
      */
     private List<String> blacklistKeywords = Arrays.asList(

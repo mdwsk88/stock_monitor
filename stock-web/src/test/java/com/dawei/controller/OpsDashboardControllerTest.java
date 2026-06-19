@@ -104,7 +104,7 @@ class OpsDashboardControllerTest {
     void testRunMacroScan() {
         MacroRealtimePushScanResult scanResult = new MacroRealtimePushScanResult();
         scanResult.setPushedCount(2);
-        when(macroRealtimePushService.scanAndPushRecentEvents()).thenReturn(scanResult);
+        when(macroRealtimePushService.scanAndPushRecentEventsManually()).thenReturn(scanResult);
 
         Map<String, Object> result = opsDashboardController.runMacroScan();
 

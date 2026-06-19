@@ -7,6 +7,7 @@ import com.dawei.entity.USStockRss;
 import com.dawei.service.AReportFusionService;
 import com.dawei.service.AISummaryService;
 import com.dawei.service.StockRankService;
+import com.dawei.utils.AStockEngagementMarkdown;
 import com.dawei.utils.WeComApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -321,13 +322,16 @@ public class MorningReportScheduler {
             String markdown = reportContext.getRiskAlerts().isEmpty() && reportContext.getOpportunityAlerts().isEmpty()
                     ? buildAPostCloseNoDataMessage(today)
                     : buildAPostCloseRiskDigestMessage(today, reportContext);
-            weComApi.sendMarkdownMessageAsync(markdown, WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(AStockEngagementMarkdown.appendReportTail(markdown), WeComApi.MarketType.A);
             log.info("【A股盘后风险速递】推送成功，风险={}，机会={}",
                     reportContext.getRiskAlerts().size(),
                     reportContext.getOpportunityAlerts().size());
         } catch (Exception e) {
             log.error("【A股盘后风险速递】执行失败: {}", e.getMessage(), e);
-            weComApi.sendMarkdownMessageAsync(buildAPostCloseErrorMessage(today, e.getMessage()), WeComApi.MarketType.A);
+            weComApi.sendMarkdownMessageAsync(
+                    AStockEngagementMarkdown.appendReportTail(buildAPostCloseErrorMessage(today, e.getMessage())),
+                    WeComApi.MarketType.A
+            );
         }
     }
 
@@ -437,27 +441,27 @@ public class MorningReportScheduler {
      * 构建A股无数据时的盘后复盘消息
      */
     private String buildAStockNoDataEveningMessage(String today) {
-        return "# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
+        return AStockEngagementMarkdown.appendReportTail("# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
                "今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n" +
                "<font color=\"warning\">⚠️ 暂无 🇨🇳 A股需要解码的异动数据</font>\n" +
                "<font color=\"comment\">（当前阈值：日内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
                "💡 持仓深度体检：\n" +
                "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
                "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>");
     }
 
     /**
      * 构建A股盘后复盘错误消息
      */
     private String buildAStockErrorEveningMessage(String today, String errorMsg) {
-        return "# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
+        return AStockEngagementMarkdown.appendReportTail("# 🌆 A股盘后情绪解码 | " + today + "\n\n" +
                "今日 A 股已收盘。系统回溯了日内（9:00-15:00）全网资讯发酵轨迹。\n\n" +
                "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
                "💡 持仓深度体检：\n" +
                "今天的行情让你看不懂？想查查你手里被套的股票今天有没有出什么暗雷？\n" +
                "👉 请在群内直接发送：@A股分析专家 分析 [你的股票代码]\n\n" +
-               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>";
+               "<font color=\"comment\">⚠️ 免责声明：本复盘由 AI 基于公开新闻全自动生成，仅用于盘后逻辑梳理，绝不构成任何投资或交易建议。</font>");
     }
 
     private String buildAPostCloseRiskDigestMessage(String today, AReportFusionContext context) {
@@ -568,13 +572,14 @@ public class MorningReportScheduler {
         String flag = market.equals("美股") ? "🇺🇸" : "🇨🇳";
         String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
         String title = market.equals("美股") ? "# 🌅 AI 盘前异动雷达 | " : "# 🌅 A股盘前异动雷达 | ";
-        return title + today + "\n\n" +
+        String markdown = title + today + "\n\n" +
                "过去 24 小时内，系统共扫描全网财经资讯源（已过滤行政噪音）。\n\n" +
                "<font color=\"warning\">⚠️ 暂无" + flag + " " + market + "异动数据</font>\n" +
                "<font color=\"comment\">（当前阈值：24小时内同一标的异动 >= 10 次，宁缺毋滥）</font>\n\n" +
                "💡 AI 深度查股：\n" +
                "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
                "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        return market.equals("A股") ? AStockEngagementMarkdown.appendReportTail(markdown) : markdown;
     }
 
     /**
@@ -583,11 +588,12 @@ public class MorningReportScheduler {
     private String buildErrorMessage(String market, String today, String errorMsg) {
         String flag = market.equals("美股") ? "🇺🇸" : "🇨🇳";
         String botName = market.equals("美股") ? "@美股分析专家" : "@A股分析专家";
-        return "# 🌅 AI 盘前异动雷达 | " + today + "\n\n" +
+        String markdown = "# 🌅 AI 盘前异动雷达 | " + today + "\n\n" +
                "过去 24 小时内，系统共扫描全网财经资讯源。\n\n" +
                "<font color=\"warning\">❌ 数据获取失败: " + errorMsg + "</font>\n\n" +
                "💡 AI 深度查股：\n" +
                "想看具体股票分析？请在群内直接发送：" + botName + " 分析 [股票代码]\n\n" +
                "<font color=\"comment\">⚠️ 免责声明：本数据由程序监听公开资讯并由 AI 自动提炼，仅供逻辑梳理与技术交流。股市有风险，入市需谨慎，绝不构成买卖建议。</font>";
+        return market.equals("A股") ? AStockEngagementMarkdown.appendReportTail(markdown) : markdown;
     }
 }
